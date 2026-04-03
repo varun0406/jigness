@@ -11,6 +11,8 @@ import { registerPurchaseRoutes } from "./routes/purchase.js";
 import { registerPaymentsRoutes } from "./routes/payments.js";
 import { registerMastersRoutes } from "./routes/masters.js";
 import { registerInventoryRoutes } from "./routes/inventory.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { extractBearer, verifyAuthToken } from "./auth.js";
 
 const env = loadEnv(process.env);
 
@@ -29,11 +31,32 @@ const app = Fastify({
 
 await app.register(cors, { origin: env.CORS_ORIGIN });
 
+function pathnameOnly(url: string): string {
+  const q = url.indexOf("?");
+  return q >= 0 ? url.slice(0, q) : url;
+}
+
+const authEnabled = Boolean(env.AUTH_USER && env.AUTH_PASS && env.AUTH_SECRET);
+if (authEnabled) {
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.method === "OPTIONS") return;
+    const path = pathnameOnly(req.url);
+    if (path === "/health") return;
+    if (path === "/auth/status" || path === "/auth/login") return;
+    const token = extractBearer(req.headers.authorization);
+    if (!token || !verifyAuthToken(token, env.AUTH_SECRET)) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+  });
+}
+
 const db = openDb(env.DB_PATH);
 migrate(db);
 // Keep database empty by default (no seed data).
 
 app.get("/health", async () => ({ ok: true }));
+
+await registerAuthRoutes(app, env);
 
 await registerDashboardRoutes(app, { db });
 await registerOrdersRoutes(app, { db });

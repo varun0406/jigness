@@ -1,6 +1,6 @@
-import type { PropsWithChildren } from "react";
 import {
   Box,
+  Button,
   Divider,
   Drawer,
   List,
@@ -10,6 +10,10 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
+import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
+import { Outlet, useNavigate } from "react-router-dom";
+import { clearAuthToken } from "../lib/auth";
+import { useAuthConfig } from "./AuthGate.tsx";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
@@ -32,8 +36,10 @@ const nav = [
   { to: "/payments", label: "Payments", icon: <PaymentsOutlinedIcon /> },
 ];
 
-export function AppShell({ children }: PropsWithChildren) {
+export function AppShell() {
   const loc = useLocation();
+  const navigate = useNavigate();
+  const { enabled: authEnabled } = useAuthConfig();
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -45,7 +51,7 @@ export function AppShell({ children }: PropsWithChildren) {
           "& .MuiDrawer-paper": { width: drawerWidth, boxSizing: "border-box" },
         }}
       >
-        <Toolbar sx={{ px: 2 }}>
+        <Toolbar sx={{ px: 2, flexDirection: "column", alignItems: "stretch", gap: 1, py: 2 }}>
           <Box>
             <Typography fontWeight={900} lineHeight={1.1}>
               Jigness ERP
@@ -54,6 +60,19 @@ export function AppShell({ children }: PropsWithChildren) {
               Metals trading / manufacturing
             </Typography>
           </Box>
+          {authEnabled ? (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<LogoutOutlinedIcon />}
+              onClick={() => {
+                clearAuthToken();
+                navigate("/login", { replace: true });
+              }}
+            >
+              Sign out
+            </Button>
+          ) : null}
         </Toolbar>
         <Divider />
         <List dense sx={{ px: 1, py: 1 }}>
@@ -73,7 +92,7 @@ export function AppShell({ children }: PropsWithChildren) {
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, px: 3, py: 2 }}>
-        {children}
+        <Outlet />
       </Box>
     </Box>
   );

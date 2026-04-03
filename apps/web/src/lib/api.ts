@@ -1,8 +1,33 @@
 import axios from "axios";
+import { clearAuthToken, getAuthToken } from "./auth";
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:3001",
 });
+
+api.interceptors.request.use((config) => {
+  const t = getAuthToken();
+  if (t) {
+    config.headers.Authorization = `Bearer ${t}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (axios.isAxiosError(err) && err.response?.status === 401) {
+      const url = String(err.config?.url ?? "");
+      if (!url.includes("/auth/login")) {
+        clearAuthToken();
+        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+          window.location.assign("/login");
+        }
+      }
+    }
+    return Promise.reject(err);
+  },
+);
 
 export type OrderRow = {
   /** Line item id (unique per grid row) */
