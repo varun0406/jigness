@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+.turbo/
+.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# SQLite DB files (app data)
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# API runtime data folders (keep folder, ignore contents)
+apps/api/data/*
+!apps/api/data/.gitkeep
+data/*
+!data/.gitkeep
+
+# Cursor / local tooling
+.cursor/

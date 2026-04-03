@@ -1,0 +1,23 @@
+{
+  "name": "jigness",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "npm run dev -w @jigness/api & npm run dev -w @jigness/web",
+    "build": "npm run build -w @jigness/api && npm run build -w @jigness/web",
+    "lint": "npm run lint -ws"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "private": "true",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "dependencies": {
+    "sonic-boom": "^5.0.0"
+  }
+}
