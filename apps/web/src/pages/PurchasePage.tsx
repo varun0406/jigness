@@ -423,14 +423,13 @@ export function PurchasePage() {
               <Typography fontWeight={900}>PO {drawerPo.po_no ?? drawerPo.id}</Typography>
               <Stack direction="row" spacing={1}>
                 <IconButton color="error" size="small" onClick={async () => {
-                  if (!window.confirm("Are you sure you want to delete this purchase order? All related receipts will be deleted.")) return;
                   setSaving(true);
                   try {
                     await deletePurchase(drawerPo.id);
                     setRows(prev => prev.filter(r => r.id !== drawerPo.id));
                     setDrawerPo(null);
                   } catch (e: unknown) {
-                    setErr(e instanceof Error ? e.message : "Failed to delete");
+                    alert(e instanceof Error ? e.message : "Failed to delete");
                   } finally {
                     setSaving(false);
                   }

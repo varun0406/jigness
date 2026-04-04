@@ -440,14 +440,13 @@ export function OrdersPage() {
               </Box>
               <Stack direction="row" spacing={1}>
                 <IconButton color="error" size="small" onClick={async () => {
-                  if (!window.confirm("Are you sure you want to delete this order? All related lines, payments, and dispatch entries will be deleted.")) return;
                   setSaving(true);
                   try {
                     await deleteOrder(selected.order_id);
                     setRows(prev => prev.filter(r => r.order_id !== selected.order_id));
                     setSelected(null);
                   } catch (e: unknown) {
-                    setErr(e instanceof Error ? e.message : "Failed to delete");
+                    alert(e instanceof Error ? e.message : "Failed to delete");
                   } finally {
                     setSaving(false);
                   }
