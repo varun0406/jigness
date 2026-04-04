@@ -72,9 +72,9 @@ export function PurchasePage() {
     }
     const parts = text.split("|").map((s) => s.trim());
     setPoLine({
-      item: parts[0] || "-",
-      size: parts[1] || "-",
-      grade: parts[2] || "-",
+      item: parts[0] || "",
+      size: parts[1] || "",
+      grade: parts[2] || "",
       input_text: text,
     });
   }
@@ -113,8 +113,8 @@ export function PurchasePage() {
   }, [drawerPo?.id]);
 
   async function submitPo() {
-    if (!poLine.size.trim() || !poLine.item.trim() || !poLine.grade.trim()) {
-      setErr("Select or enter raw material (Item | Size | Grade).");
+    if (!poLine.item.trim()) {
+      setErr("Select or enter raw material.");
       return;
     }
     setSaving(true);
@@ -272,9 +272,7 @@ export function PurchasePage() {
                     saving ||
                     !supplier.trim() ||
                     weight <= 0 ||
-                    !poLine.size.trim() ||
-                    !poLine.item.trim() ||
-                    !poLine.grade.trim()
+                    !poLine.item.trim()
                   }
                   onClick={submitPo}
                 >

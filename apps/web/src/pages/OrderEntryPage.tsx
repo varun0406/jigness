@@ -71,9 +71,9 @@ export function OrderEntryPage() {
           const parts = text.split("|").map((s) => s.trim());
           next[index] = {
             ...next[index],
-            item: parts[0] || "-",
-            size: parts[1] || "-",
-            grade: parts[2] || "-",
+            item: parts[0] || "",
+            size: parts[1] || "",
+            grade: parts[2] || "",
           };
         }
       }
@@ -100,10 +100,10 @@ export function OrderEntryPage() {
         order_kgs: Number(l.order_kgs),
         bill_rate: Number(l.bill_rate) || 0,
       }))
-      .filter((l) => l.size && l.item && l.grade && l.order_kgs > 0);
+      .filter((l) => l.item && l.order_kgs > 0);
 
     if (clean.length === 0) {
-      setErr("Add at least one line with product (size, item, grade) and order weight > 0.");
+      setErr("Add at least one line with product item and order weight > 0.");
       return;
     }
 
