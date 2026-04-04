@@ -59,20 +59,22 @@ export function PurchasePage() {
   const amountOrderedPreview = useMemo(() => weight * rate, [weight, rate]);
 
   /** Raw material line (same key as sales orders / products master) */
-  const [poLine, setPoLine] = useState({ size: "", item: "", grade: "" });
+  const [poLine, setPoLine] = useState({ size: "", item: "", grade: "", input_text: "" });
 
   function applyProductToPoLine(prod: MasterProduct | null, text: string) {
     if (prod) {
-      setPoLine({ size: prod.size, item: prod.item, grade: prod.grade });
+      setPoLine({ size: prod.size, item: prod.item, grade: prod.grade, input_text: `${prod.item} | ${prod.size} | ${prod.grade}` });
       return;
     }
     if (!text.trim()) {
-      setPoLine({ size: "", item: "", grade: "" });
+      setPoLine({ size: "", item: "", grade: "", input_text: "" });
       return;
     }
     const parts = text.split("|").map((s) => s.trim()).filter(Boolean);
     if (parts.length === 3) {
-      setPoLine({ item: parts[0], size: parts[1], grade: parts[2] });
+      setPoLine({ item: parts[0], size: parts[1], grade: parts[2], input_text: text });
+    } else {
+      setPoLine({ item: "", size: "", grade: "", input_text: text });
     }
   }
 
@@ -134,7 +136,7 @@ export function PurchasePage() {
       setWeight(0);
       setRate(0);
       setDebitNote("");
-      setPoLine({ size: "", item: "", grade: "" });
+      setPoLine({ size: "", item: "", grade: "", input_text: "" });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -218,9 +220,7 @@ export function PurchasePage() {
                     ? ({ id: -1, size: poLine.size, item: poLine.item, grade: poLine.grade, avg_cost: 0 } as MasterProduct)
                     : null
                 }
-                inputValue={
-                  poLine.item && poLine.size && poLine.grade ? `${poLine.item} | ${poLine.size} | ${poLine.grade}` : ""
-                }
+                inputValue={poLine.input_text ?? ""}
                 onInputChange={(_, v) => applyProductToPoLine(null, v)}
                 onChange={(_, v) => {
                   if (v && typeof v === "object") applyProductToPoLine(v, "");

@@ -17,7 +17,7 @@ import dayjs from "dayjs";
 import { createOrder, fetchClients, fetchProducts } from "../lib/api";
 import type { CreateOrderLine, MasterClient, MasterProduct, OrderRow } from "../lib/api";
 
-type LineDraft = CreateOrderLine;
+type LineDraft = CreateOrderLine & { input_text?: string };
 
 const emptyLine = (): LineDraft => ({
   size: "",
@@ -26,6 +26,7 @@ const emptyLine = (): LineDraft => ({
   length_nos: "",
   order_kgs: 0,
   bill_rate: 0,
+  input_text: "",
 });
 
 export function OrderEntryPage() {
@@ -61,14 +62,17 @@ export function OrderEntryPage() {
     setLines((prev) => {
       const next = [...prev];
       if (prod) {
-        next[index] = { ...next[index], size: prod.size, item: prod.item, grade: prod.grade };
+        next[index] = { ...next[index], size: prod.size, item: prod.item, grade: prod.grade, input_text: `${prod.item} | ${prod.size} | ${prod.grade}` };
       } else {
+        next[index] = { ...next[index], input_text: text };
         if (!text.trim()) {
           next[index] = { ...next[index], size: "", item: "", grade: "" };
         } else {
           const parts = text.split("|").map((s) => s.trim()).filter(Boolean);
           if (parts.length === 3) {
             next[index] = { ...next[index], item: parts[0], size: parts[1], grade: parts[2] };
+          } else {
+            next[index] = { ...next[index], item: "", size: "", grade: "" };
           }
         }
       }
@@ -213,9 +217,7 @@ export function OrderEntryPage() {
                         ? ({ id: -1, size: line.size, item: line.item, grade: line.grade, avg_cost: 0 } as MasterProduct)
                         : null
                     }
-                    inputValue={
-                      line.item && line.size && line.grade ? `${line.item} | ${line.size} | ${line.grade}` : ""
-                    }
+                    inputValue={line.input_text ?? ""}
                     onInputChange={(_, v) => {
                       applyProductToLine(index, null, v);
                     }}
