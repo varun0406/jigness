@@ -16,10 +16,12 @@ import {
   Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import dayjs from "dayjs";
 import {
   createPurchase,
   createPurchaseReceipt,
+  deletePurchase,
   fetchProducts,
   fetchPurchaseLedger,
   fetchPurchaseReceipts,
@@ -419,9 +421,26 @@ export function PurchasePage() {
           <Box sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography fontWeight={900}>PO {drawerPo.po_no ?? drawerPo.id}</Typography>
-              <IconButton onClick={() => setDrawerPo(null)}>
-                <CloseIcon />
-              </IconButton>
+              <Stack direction="row" spacing={1}>
+                <IconButton color="error" size="small" onClick={async () => {
+                  if (!window.confirm("Are you sure you want to delete this purchase order? All related receipts will be deleted.")) return;
+                  setSaving(true);
+                  try {
+                    await deletePurchase(drawerPo.id);
+                    setRows(prev => prev.filter(r => r.id !== drawerPo.id));
+                    setDrawerPo(null);
+                  } catch (e: unknown) {
+                    setErr(e instanceof Error ? e.message : "Failed to delete");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}>
+                  <DeleteOutlineIcon />
+                </IconButton>
+                <IconButton size="small" onClick={() => setDrawerPo(null)}>
+                  <CloseIcon />
+                </IconButton>
+              </Stack>
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {drawerPo.supplier_name} • {drawerPo.purchase_date}
