@@ -17,7 +17,7 @@ import dayjs from "dayjs";
 import { createOrder, fetchClients, fetchProducts } from "../lib/api";
 import type { CreateOrderLine, MasterClient, MasterProduct, OrderRow } from "../lib/api";
 
-type LineDraft = CreateOrderLine & { input_text?: string };
+type LineDraft = CreateOrderLine;
 
 const emptyLine = (): LineDraft => ({
   size: "",
@@ -26,7 +26,6 @@ const emptyLine = (): LineDraft => ({
   length_nos: "",
   order_kgs: 0,
   bill_rate: 0,
-  input_text: "",
 });
 
 export function OrderEntryPage() {
@@ -58,28 +57,7 @@ export function OrderEntryPage() {
 
   const resolvedClientName = useMemo(() => (client ? client.name : clientText.trim()), [client, clientText]);
 
-  function applyProductToLine(index: number, prod: MasterProduct | null, text: string) {
-    setLines((prev) => {
-      const next = [...prev];
-      if (prod) {
-        next[index] = { ...next[index], size: prod.size, item: prod.item, grade: prod.grade, input_text: `${prod.item} | ${prod.size} | ${prod.grade}` };
-      } else {
-        next[index] = { ...next[index], input_text: text };
-        if (!text.trim()) {
-          next[index] = { ...next[index], size: "", item: "", grade: "" };
-        } else {
-          const parts = text.split("|").map((s) => s.trim());
-          next[index] = {
-            ...next[index],
-            item: parts[0] || "",
-            size: parts[1] || "",
-            grade: parts[2] || "",
-          };
-        }
-      }
-      return next;
-    });
-  }
+
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) => {
@@ -93,9 +71,9 @@ export function OrderEntryPage() {
     if (!resolvedClientName.trim()) return;
     const clean: CreateOrderLine[] = lines
       .map((l) => ({
-        size: l.size.trim(),
+        size: l.size.trim() || "-",
         item: l.item.trim(),
-        grade: l.grade.trim(),
+        grade: l.grade.trim() || "-",
         length_nos: l.length_nos?.trim() || undefined,
         order_kgs: Number(l.order_kgs),
         bill_rate: Number(l.bill_rate) || 0,
@@ -210,32 +188,34 @@ export function OrderEntryPage() {
                       </IconButton>
                     ) : null}
                   </Stack>
-                  <Autocomplete
-                    options={products}
-                    loading={loading}
-                    value={
-                      line.item && line.size && line.grade
-                        ? ({ id: -1, size: line.size, item: line.item, grade: line.grade, avg_cost: 0 } as MasterProduct)
-                        : null
-                    }
-                    inputValue={line.input_text ?? ""}
-                    onInputChange={(_, v) => {
-                      applyProductToLine(index, null, v);
-                    }}
-                    onChange={(_, v) => {
-                      if (v && typeof v === "object") applyProductToLine(index, v, "");
-                      else applyProductToLine(index, null, typeof v === "string" ? v : "");
-                    }}
-                    getOptionLabel={(o) => (typeof o === "string" ? o : `${o.item} | ${o.size} | ${o.grade}`)}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label="Product (Item | Size | Grade)"
-                        placeholder="e.g. Copper Rod | 8mm | ETP"
-                      />
-                    )}
-                    freeSolo
-                  />
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                    <Autocomplete
+                      options={products}
+                      loading={loading}
+                      getOptionLabel={(o) => typeof o === "string" ? o : o.item}
+                      renderOption={(props, option) => (
+                        <li {...props}>
+                          {option.item} | {option.size} | {option.grade}
+                        </li>
+                      )}
+                      value={null}
+                      inputValue={line.item}
+                      onInputChange={(_, v, reason) => {
+                        if (reason !== "reset") updateLine(index, { item: v });
+                      }}
+                      onChange={(_, v) => {
+                        if (v && typeof v === "object") {
+                          updateLine(index, { item: v.item, size: v.size, grade: v.grade });
+                        }
+                      }}
+                      renderInput={(params) => <TextField {...params} label="Item (or select Product)" required />}
+                      freeSolo
+                      fullWidth
+                      sx={{ flex: 2 }}
+                    />
+                    <TextField label="Size" value={line.size} onChange={(e) => updateLine(index, { size: e.target.value })} fullWidth />
+                    <TextField label="Grade" value={line.grade} onChange={(e) => updateLine(index, { grade: e.target.value })} fullWidth />
+                  </Stack>
                   <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                     <TextField
                       label="Length / Nos"
