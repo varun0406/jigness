@@ -209,4 +209,19 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
     const row = db.prepare(`SELECT * FROM v_orders WHERE id = ?`).get(lineId);
     return { data: row };
   });
+
+  app.delete("/orders/:orderId", async (req, reply) => {
+    const orderId = Number((req.params as { orderId: string }).orderId);
+    if (!Number.isFinite(orderId)) return reply.code(400).send({ error: "Invalid order id" });
+
+    const existing = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(orderId);
+    if (!existing) return reply.code(404).send({ error: "Order not found" });
+
+    db.prepare(`DELETE FROM payments WHERE order_id = ?`).run(orderId);
+    db.prepare(`DELETE FROM dispatch_entries WHERE order_id = ?`).run(orderId);
+    db.prepare(`DELETE FROM order_line_items WHERE order_id = ?`).run(orderId);
+    db.prepare(`DELETE FROM orders WHERE id = ?`).run(orderId);
+
+    return { data: { success: true } };
+  });
 }

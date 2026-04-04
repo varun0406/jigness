@@ -103,6 +103,11 @@ export async function patchOrderLine(
   return res.data.data;
 }
 
+export async function deleteOrder(orderId: number) {
+  const res = await api.delete<{ data: { success: boolean } }>(`/orders/${orderId}`);
+  return res.data.data;
+}
+
 export type MasterClient = { id: number; name: string };
 export type MasterSupplier = { id: number; name: string };
 export type MasterProduct = { id: number; size: string; item: string; grade: string; avg_cost: number };

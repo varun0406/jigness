@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { Link as RouterLink } from "react-router-dom";
 import dayjs from "dayjs";
 import {
@@ -25,6 +26,7 @@ import {
   fetchPayments,
   patchOrder,
   patchOrderLine,
+  deleteOrder,
 } from "../lib/api";
 import type { OrderRow } from "../lib/api";
 import type { DispatchEntry, PaymentEntry } from "../lib/api";
@@ -436,9 +438,26 @@ export function OrdersPage() {
                   {selected.client_name} • {selected.item} • {selected.size} • {selected.grade}
                 </Typography>
               </Box>
-              <IconButton onClick={() => setSelected(null)}>
-                <CloseIcon />
-              </IconButton>
+              <Stack direction="row" spacing={1}>
+                <IconButton color="error" size="small" onClick={async () => {
+                  if (!window.confirm("Are you sure you want to delete this order? All related lines, payments, and dispatch entries will be deleted.")) return;
+                  setSaving(true);
+                  try {
+                    await deleteOrder(selected.order_id);
+                    setRows(prev => prev.filter(r => r.order_id !== selected.order_id));
+                    setSelected(null);
+                  } catch (e: unknown) {
+                    setErr(e instanceof Error ? e.message : "Failed to delete");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}>
+                  <DeleteOutlineIcon />
+                </IconButton>
+                <IconButton size="small" onClick={() => setSelected(null)}>
+                  <CloseIcon />
+                </IconButton>
+              </Stack>
             </Stack>
 
             <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
