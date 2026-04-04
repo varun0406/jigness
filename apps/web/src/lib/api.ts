@@ -225,6 +225,11 @@ export async function patchPurchaseRecNote(purchaseId: number, rec_note: string 
   return res.data.data;
 }
 
+export async function deletePurchase(purchaseId: number) {
+  const res = await api.delete<{ data: { success: boolean } }>(`/purchase/${purchaseId}`);
+  return res.data.data;
+}
+
 export type PaymentEntry = {
   id: number;
   payment_date: string;

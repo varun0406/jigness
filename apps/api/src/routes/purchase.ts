@@ -178,4 +178,16 @@ LIMIT 500
     if (!row) return reply.code(404).send({ error: "Not found" });
     return { data: row };
   });
+
+  app.delete("/purchase/:id", async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: "Invalid id" });
+    const po = db.prepare(`SELECT id FROM purchase_entries WHERE id = ?`).get(id);
+    if (!po) return reply.code(404).send({ error: "Purchase order not found" });
+
+    db.prepare(`DELETE FROM purchase_receipts WHERE purchase_entry_id = ?`).run(id);
+    db.prepare(`DELETE FROM purchase_entries WHERE id = ?`).run(id);
+
+    return { data: { success: true } };
+  });
 }
