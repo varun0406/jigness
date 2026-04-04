@@ -68,12 +68,13 @@ export function OrderEntryPage() {
         if (!text.trim()) {
           next[index] = { ...next[index], size: "", item: "", grade: "" };
         } else {
-          const parts = text.split("|").map((s) => s.trim()).filter(Boolean);
-          if (parts.length === 3) {
-            next[index] = { ...next[index], item: parts[0], size: parts[1], grade: parts[2] };
-          } else {
-            next[index] = { ...next[index], item: "", size: "", grade: "" };
-          }
+          const parts = text.split("|").map((s) => s.trim());
+          next[index] = {
+            ...next[index],
+            item: parts[0] || "-",
+            size: parts[1] || "-",
+            grade: parts[2] || "-",
+          };
         }
       }
       return next;

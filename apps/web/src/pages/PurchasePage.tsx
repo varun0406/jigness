@@ -70,12 +70,13 @@ export function PurchasePage() {
       setPoLine({ size: "", item: "", grade: "", input_text: "" });
       return;
     }
-    const parts = text.split("|").map((s) => s.trim()).filter(Boolean);
-    if (parts.length === 3) {
-      setPoLine({ item: parts[0], size: parts[1], grade: parts[2], input_text: text });
-    } else {
-      setPoLine({ item: "", size: "", grade: "", input_text: text });
-    }
+    const parts = text.split("|").map((s) => s.trim());
+    setPoLine({
+      item: parts[0] || "-",
+      size: parts[1] || "-",
+      grade: parts[2] || "-",
+      input_text: text,
+    });
   }
 
   function productLabel(r: PurchaseLedgerRow) {
