@@ -6,9 +6,20 @@ const PatchOpeningBody = z.object({
   opening_stock_kgs: z.coerce.number().min(0),
 });
 
+const PatchMinimumBody = z.object({
+  minimum_stock_kgs: z.coerce.number().min(0),
+});
+
 export function getOpeningStockKgs(db: Db): number {
   const row = db
     .prepare(`SELECT value_real FROM app_settings WHERE key = 'opening_stock_kgs'`)
+    .get() as { value_real: number } | undefined;
+  return row?.value_real ?? 0;
+}
+
+export function getMinimumStockKgs(db: Db): number {
+  const row = db
+    .prepare(`SELECT value_real FROM app_settings WHERE key = 'minimum_stock_kgs'`)
     .get() as { value_real: number } | undefined;
   return row?.value_real ?? 0;
 }
@@ -27,5 +38,18 @@ export async function registerInventoryRoutes(app: FastifyInstance, opts: { db: 
        ON CONFLICT(key) DO UPDATE SET value_real = excluded.value_real`,
     ).run({ v: body.opening_stock_kgs });
     return { data: { opening_stock_kgs: getOpeningStockKgs(db) } };
+  });
+
+  app.get("/inventory/minimum-stock", async () => {
+    return { data: { minimum_stock_kgs: getMinimumStockKgs(db) } };
+  });
+
+  app.patch("/inventory/minimum-stock", async (req) => {
+    const body = PatchMinimumBody.parse(req.body);
+    db.prepare(
+      `INSERT INTO app_settings(key, value_real) VALUES ('minimum_stock_kgs', @v)
+       ON CONFLICT(key) DO UPDATE SET value_real = excluded.value_real`,
+    ).run({ v: body.minimum_stock_kgs });
+    return { data: { minimum_stock_kgs: getMinimumStockKgs(db) } };
   });
 }

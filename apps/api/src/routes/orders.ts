@@ -17,7 +17,18 @@ const PatchOrderBody = z.object({
   paid_amount: z.number().min(0).optional(),
 });
 
+const PatchOrderMetaBody = z.object({
+  wo_no: z.string().trim().min(1).optional(),
+  order_date: z.string().min(10).optional(),
+  client_name: z.string().trim().min(1).optional(),
+});
+
 const PatchLineBody = z.object({
+  size: z.string().trim().min(1).optional(),
+  item: z.string().trim().min(1).optional(),
+  grade: z.string().trim().min(1).optional(),
+  length_nos: z.string().trim().optional().nullable(),
+  order_kgs: z.coerce.number().min(0).optional(),
   bill_rate: z.number().min(0).optional(),
   avg_cost: z.number().min(0).optional(),
 });
@@ -61,6 +72,30 @@ function avgCostFromPurchases(db: Db, productId: number): number {
     )
     .get(productId) as { avg_cost: number };
   return row.avg_cost;
+}
+
+function resolveClientId(db: Db, name: string) {
+  const existing = db.prepare(`SELECT id FROM clients WHERE name = ?`).get(name) as { id: number } | undefined;
+  if (existing) return existing.id;
+  return Number(db.prepare(`INSERT INTO clients(name) VALUES (?)`).run(name).lastInsertRowid);
+}
+
+function recomputeOrderHeaderFromLines(db: Db, orderId: number) {
+  const total = db
+    .prepare(`SELECT COALESCE(SUM(order_kgs), 0) AS t FROM order_line_items WHERE order_id = ?`)
+    .get(orderId) as { t: number };
+  db.prepare(`UPDATE orders SET order_kgs = ? WHERE id = ?`).run(total.t, orderId);
+
+  const first = db
+    .prepare(
+      `SELECT size, item, grade, length_nos
+       FROM order_line_items WHERE order_id = ? ORDER BY id ASC LIMIT 1`,
+    )
+    .get(orderId) as { size: string; item: string; grade: string; length_nos: string | null } | undefined;
+  if (first) {
+    const productId = resolveProductId(db, first.size, first.item, first.grade);
+    db.prepare(`UPDATE orders SET product_id = ?, length_nos = ? WHERE id = ?`).run(productId, first.length_nos, orderId);
+  }
 }
 
 function buildListSql(params: z.infer<typeof ListOrdersQuery>) {
@@ -113,13 +148,7 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
   app.post("/orders", async (req, reply) => {
     const body = CreateOrderBody.parse(req.body);
 
-    const clientId = (() => {
-      const existing = db.prepare(`SELECT id FROM clients WHERE name = ?`).get(body.client_name) as
-        | { id: number }
-        | undefined;
-      if (existing) return existing.id;
-      return Number(db.prepare(`INSERT INTO clients(name) VALUES (?)`).run(body.client_name).lastInsertRowid);
-    })();
+    const clientId = resolveClientId(db, body.client_name);
 
     const lines = body.lines.map((l) => ({
       ...l,
@@ -170,6 +199,43 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
     }
   });
 
+  /** Work order header fields */
+  app.patch("/orders/:orderId/meta", async (req, reply) => {
+    const orderId = Number((req.params as { orderId: string }).orderId);
+    if (!Number.isFinite(orderId)) return reply.code(400).send({ error: "Invalid order id" });
+
+    const body = PatchOrderMetaBody.parse(req.body);
+    if (Object.keys(body).length === 0) return reply.code(400).send({ error: "No fields" });
+
+    const existing = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(orderId);
+    if (!existing) return reply.code(404).send({ error: "Order not found" });
+
+    const fields: string[] = [];
+    const binds: Record<string, unknown> = { id: orderId };
+
+    if (body.wo_no !== undefined) {
+      fields.push(`wo_no = @wo_no`);
+      binds.wo_no = body.wo_no;
+    }
+    if (body.order_date !== undefined) {
+      fields.push(`order_date = @order_date`);
+      binds.order_date = body.order_date;
+    }
+    if (body.client_name !== undefined) {
+      const clientId = resolveClientId(db, body.client_name);
+      fields.push(`client_id = @client_id`);
+      binds.client_id = clientId;
+    }
+
+    try {
+      db.prepare(`UPDATE orders SET ${fields.join(", ")} WHERE id = @id`).run(binds);
+    } catch (e: unknown) {
+      return reply.code(400).send({ error: e instanceof Error ? e.message : "Failed to update order" });
+    }
+    const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(orderId);
+    return { data: rows };
+  });
+
   /** Invoice / payment fields on the work order (header) */
   app.patch("/orders/:orderId", async (req, reply) => {
     const orderId = Number((req.params as { orderId: string }).orderId);
@@ -190,13 +256,18 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
     return { data: rows };
   });
 
-  /** AVE / BILL RATE per line item */
+  /** Line item fields (including AVE / BILL RATE) */
   app.patch("/order-lines/:lineId", async (req, reply) => {
     const lineId = Number((req.params as { lineId: string }).lineId);
     if (!Number.isFinite(lineId)) return reply.code(400).send({ error: "Invalid line id" });
 
     const body = PatchLineBody.parse(req.body);
     if (Object.keys(body).length === 0) return reply.code(400).send({ error: "No fields" });
+
+    const existing = db
+      .prepare(`SELECT id, order_id FROM order_line_items WHERE id = ?`)
+      .get(lineId) as { id: number; order_id: number } | undefined;
+    if (!existing) return reply.code(404).send({ error: "Line not found" });
 
     const fields: string[] = [];
     const binds: Record<string, unknown> = { id: lineId };
@@ -206,8 +277,60 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
     }
 
     db.prepare(`UPDATE order_line_items SET ${fields.join(", ")} WHERE id = @id`).run(binds);
+    recomputeOrderHeaderFromLines(db, existing.order_id);
     const row = db.prepare(`SELECT * FROM v_orders WHERE id = ?`).get(lineId);
     return { data: row };
+  });
+
+  app.post("/orders/:orderId/lines", async (req, reply) => {
+    const orderId = Number((req.params as { orderId: string }).orderId);
+    if (!Number.isFinite(orderId)) return reply.code(400).send({ error: "Invalid order id" });
+    const body = OrderLine.parse(req.body);
+
+    const order = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(orderId);
+    if (!order) return reply.code(404).send({ error: "Order not found" });
+
+    const productId = resolveProductId(db, body.size, body.item, body.grade);
+    const autoAvg = avgCostFromPurchases(db, productId);
+    const info = db
+      .prepare(
+        `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, bill_rate, avg_cost)
+         VALUES (?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        orderId,
+        body.size,
+        body.item,
+        body.grade,
+        body.length_nos ?? null,
+        body.order_kgs,
+        body.bill_rate ?? 0,
+        body.avg_cost ?? autoAvg,
+      );
+
+    recomputeOrderHeaderFromLines(db, orderId);
+    const lineId = Number(info.lastInsertRowid);
+    const row = db.prepare(`SELECT * FROM v_orders WHERE id = ?`).get(lineId);
+    return { data: row };
+  });
+
+  app.delete("/order-lines/:lineId", async (req, reply) => {
+    const lineId = Number((req.params as { lineId: string }).lineId);
+    if (!Number.isFinite(lineId)) return reply.code(400).send({ error: "Invalid line id" });
+
+    const existing = db
+      .prepare(`SELECT id, order_id FROM order_line_items WHERE id = ?`)
+      .get(lineId) as { id: number; order_id: number } | undefined;
+    if (!existing) return reply.code(404).send({ error: "Line not found" });
+
+    const count = (db.prepare(`SELECT COUNT(1) AS c FROM order_line_items WHERE order_id = ?`).get(existing.order_id) as { c: number })
+      .c;
+    if (count <= 1) return reply.code(400).send({ error: "Cannot delete the last line item" });
+
+    db.prepare(`DELETE FROM order_line_items WHERE id = ?`).run(lineId);
+    recomputeOrderHeaderFromLines(db, existing.order_id);
+    const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(existing.order_id);
+    return { data: rows };
   });
 
   app.delete("/orders/:orderId", async (req, reply) => {

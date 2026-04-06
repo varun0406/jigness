@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db.js";
-import { getOpeningStockKgs } from "./inventory.js";
+import { getMinimumStockKgs, getOpeningStockKgs } from "./inventory.js";
 
 export async function registerDashboardRoutes(app: FastifyInstance, opts: { db: Db }) {
   const { db } = opts;
@@ -39,18 +39,33 @@ FROM order_line_items oli
       )
       .get() as { pos: number; neg: number };
 
-    const purchaseSum = db.prepare(`SELECT COALESCE(SUM(weight),0) AS w FROM purchase_entries`).get() as {
-      w: number;
-    };
-    const dispatchSum = db
-      .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries`)
-      .get() as { w: number };
-    const salesReturnSum = db
-      .prepare(`SELECT COALESCE(SUM(sales_return),0) AS w FROM orders`)
-      .get() as { w: number };
+    const incomingMaterial = (
+      db.prepare(`SELECT COALESCE(SUM(weight_received),0) AS w FROM purchase_receipts`).get() as { w: number }
+    ).w;
+    const dispatchTotal = (
+      db.prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries`).get() as { w: number }
+    ).w;
+    const dispatchReturn = (db.prepare(`SELECT COALESCE(SUM(weight),0) AS w FROM sales_returns`).get() as { w: number }).w;
+    const incomingRmReturn = (
+      db.prepare(`SELECT COALESCE(SUM(weight),0) AS w FROM purchase_returns`).get() as { w: number }
+    ).w;
+
+    const pendingPurchaseOrders = (
+      db
+        .prepare(`SELECT COALESCE(SUM(CASE WHEN (weight - received_weight) > 0 THEN (weight - received_weight) ELSE 0 END), 0) AS w FROM purchase_entries`)
+        .get() as { w: number }
+    ).w;
+
+    const pendingSalesOrders = pendingKgsRow.p;
 
     const openingStock = getOpeningStockKgs(db);
-    const currentStock = openingStock + purchaseSum.w - dispatchSum.w - salesReturnSum.w;
+    const minimumStock = getMinimumStockKgs(db);
+    const currentStock = openingStock + incomingMaterial + dispatchReturn - dispatchTotal - incomingRmReturn;
+
+    const purchaseRequired =
+      minimumStock +
+      pendingSalesOrders -
+      (incomingMaterial + dispatchReturn - dispatchTotal - incomingRmReturn + pendingPurchaseOrders);
 
     return {
       data: {
@@ -60,7 +75,17 @@ FROM order_line_items oli
         profit_per_kg_positive_sum: profitAgg.pos,
         profit_per_kg_negative_sum: profitAgg.neg,
         opening_stock_kgs: openingStock,
+        minimum_stock_kgs: minimumStock,
         current_stock_kgs: currentStock,
+        purchase_required_kgs: purchaseRequired,
+        breakdown: {
+          pending_sales_orders_kgs: pendingSalesOrders,
+          pending_purchase_orders_kgs: pendingPurchaseOrders,
+          incoming_material_kgs: incomingMaterial,
+          dispatch_kgs: dispatchTotal,
+          dispatch_return_kgs: dispatchReturn,
+          incoming_rm_return_kgs: incomingRmReturn,
+        },
         total_orders: db.prepare(`SELECT COUNT(1) AS c FROM orders`).get(),
       },
     };

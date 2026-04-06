@@ -28,6 +28,25 @@ const CreateReceiptBody = z.object({
   note: z.string().trim().optional(),
 });
 
+const PatchPurchaseBody = z.object({
+  supplier_name: z.string().trim().min(1).optional(),
+  po_no: z.string().trim().optional().nullable(),
+  purchase_date: z.string().min(10).optional(),
+  weight: z.coerce.number().positive().optional(),
+  rate: z.coerce.number().min(0).optional(),
+  debit_note: z.string().trim().optional().nullable(),
+  size: z.string().trim().min(1).optional(),
+  item: z.string().trim().min(1).optional(),
+  grade: z.string().trim().min(1).optional(),
+  rec_note: z.string().trim().optional().nullable(),
+});
+
+const PatchReceiptBody = z.object({
+  receipt_date: z.string().min(10).optional(),
+  weight_received: z.coerce.number().positive().optional(),
+  note: z.string().trim().optional().nullable(),
+});
+
 function ledgerRow(db: Db, id: number) {
   return db
     .prepare(
@@ -60,6 +79,12 @@ function recalcReceived(db: Db, purchaseEntryId: number) {
     .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ?`)
     .get(purchaseEntryId) as { s: number };
   db.prepare(`UPDATE purchase_entries SET received_weight = ? WHERE id = ?`).run(row.s, purchaseEntryId);
+}
+
+function resolveSupplierId(db: Db, name: string) {
+  const existing = db.prepare(`SELECT id FROM suppliers WHERE name = ?`).get(name) as { id: number } | undefined;
+  if (existing) return existing.id;
+  return Number(db.prepare(`INSERT INTO suppliers(name) VALUES (?)`).run(name).lastInsertRowid);
 }
 
 export async function registerPurchaseRoutes(app: FastifyInstance, opts: { db: Db }) {
@@ -168,15 +193,109 @@ LIMIT 500
   app.patch("/purchase/:id", async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: "Invalid id" });
-    const body = z
-      .object({
-        rec_note: z.string().trim().optional().nullable(),
-      })
-      .parse(req.body);
-    db.prepare(`UPDATE purchase_entries SET rec_note = ? WHERE id = ?`).run(body.rec_note ?? null, id);
+    const body = PatchPurchaseBody.parse(req.body);
+    if (Object.keys(body).length === 0) return reply.code(400).send({ error: "No fields" });
+
+    const existing = db
+      .prepare(`SELECT id, supplier_id, product_id, weight, received_weight FROM purchase_entries WHERE id = ?`)
+      .get(id) as { id: number; supplier_id: number; product_id: number | null; weight: number; received_weight: number } | undefined;
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+
+    const nextWeight = body.weight ?? existing.weight;
+    if (nextWeight < existing.received_weight - 0.0001) {
+      return reply.code(400).send({ error: "PO weight cannot be less than already received weight" });
+    }
+
+    let nextSupplierId: number | undefined;
+    if (body.supplier_name !== undefined) {
+      nextSupplierId = resolveSupplierId(db, body.supplier_name);
+    }
+
+    let nextProductId: number | null | undefined;
+    if (body.size !== undefined || body.item !== undefined || body.grade !== undefined) {
+      const currentProd = db
+        .prepare(`SELECT size, item, grade FROM products WHERE id = ?`)
+        .get(existing.product_id) as { size: string; item: string; grade: string } | undefined;
+      const size = body.size ?? currentProd?.size;
+      const item = body.item ?? currentProd?.item;
+      const grade = body.grade ?? currentProd?.grade;
+      if (!size || !item || !grade) {
+        return reply.code(400).send({ error: "Size, item, and grade are required for product" });
+      }
+      nextProductId = resolveProductId(db, size, item, grade);
+    }
+
+    const fields: string[] = [];
+    const binds: Record<string, unknown> = { id };
+    if (nextSupplierId !== undefined) {
+      fields.push(`supplier_id = @supplier_id`);
+      binds.supplier_id = nextSupplierId;
+    }
+    if (nextProductId !== undefined) {
+      fields.push(`product_id = @product_id`);
+      binds.product_id = nextProductId;
+    }
+    for (const key of ["po_no", "purchase_date", "weight", "rate", "debit_note", "rec_note"] as const) {
+      if ((body as any)[key] !== undefined) {
+        fields.push(`${key} = @${key}`);
+        binds[key] = (body as any)[key] ?? null;
+      }
+    }
+
+    if (fields.length === 0) return reply.code(400).send({ error: "No fields" });
+
+    db.prepare(`UPDATE purchase_entries SET ${fields.join(", ")} WHERE id = @id`).run(binds);
     const row = ledgerRow(db, id);
-    if (!row) return reply.code(404).send({ error: "Not found" });
     return { data: row };
+  });
+
+  app.patch("/purchase-receipts/:id", async (req, reply) => {
+    const receiptId = Number((req.params as { id: string }).id);
+    if (!Number.isFinite(receiptId)) return reply.code(400).send({ error: "Invalid id" });
+    const body = PatchReceiptBody.parse(req.body);
+    if (Object.keys(body).length === 0) return reply.code(400).send({ error: "No fields" });
+
+    const existing = db
+      .prepare(`SELECT id, purchase_entry_id, weight_received FROM purchase_receipts WHERE id = ?`)
+      .get(receiptId) as { id: number; purchase_entry_id: number; weight_received: number } | undefined;
+    if (!existing) return reply.code(404).send({ error: "Receipt not found" });
+
+    const po = db.prepare(`SELECT id, weight FROM purchase_entries WHERE id = ?`).get(existing.purchase_entry_id) as
+      | { id: number; weight: number }
+      | undefined;
+    if (!po) return reply.code(404).send({ error: "Purchase order not found" });
+
+    const nextWeight = body.weight_received ?? existing.weight_received;
+    const sumOther = db
+      .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ? AND id <> ?`)
+      .get(existing.purchase_entry_id, receiptId) as { s: number };
+    if (sumOther.s + nextWeight > po.weight + 0.0001) {
+      return reply.code(400).send({ error: "Received total cannot exceed PO weight" });
+    }
+
+    const fields: string[] = [];
+    const binds: Record<string, unknown> = { id: receiptId };
+    for (const [k, v] of Object.entries(body)) {
+      fields.push(`${k} = @${k}`);
+      binds[k] = v ?? null;
+    }
+    db.prepare(`UPDATE purchase_receipts SET ${fields.join(", ")} WHERE id = @id`).run(binds);
+    recalcReceived(db, existing.purchase_entry_id);
+    return { data: ledgerRow(db, existing.purchase_entry_id) };
+  });
+
+  app.delete("/purchase-receipts/:id", async (req, reply) => {
+    const receiptId = Number((req.params as { id: string }).id);
+    if (!Number.isFinite(receiptId)) return reply.code(400).send({ error: "Invalid id" });
+
+    const existing = db
+      .prepare(`SELECT id, purchase_entry_id FROM purchase_receipts WHERE id = ?`)
+      .get(receiptId) as { id: number; purchase_entry_id: number } | undefined;
+    if (!existing) return reply.code(404).send({ error: "Receipt not found" });
+
+    db.prepare(`DELETE FROM purchase_receipts WHERE id = ?`).run(receiptId);
+    recalcReceived(db, existing.purchase_entry_id);
+    return { data: ledgerRow(db, existing.purchase_entry_id) };
   });
 
   app.delete("/purchase/:id", async (req, reply) => {

@@ -95,11 +95,29 @@ export async function patchOrder(
   return res.data.data;
 }
 
+export async function patchOrderMeta(
+  orderId: number,
+  body: Partial<Pick<OrderRow, "wo_no" | "order_date" | "client_name">>,
+) {
+  const res = await api.patch<{ data: OrderRow[] }>(`/orders/${orderId}/meta`, body);
+  return res.data.data;
+}
+
 export async function patchOrderLine(
   lineId: number,
-  body: Partial<Pick<OrderRow, "bill_rate" | "avg_cost">>,
+  body: Partial<Pick<OrderRow, "size" | "item" | "grade" | "length_nos" | "order_kgs" | "bill_rate" | "avg_cost">>,
 ) {
   const res = await api.patch<{ data: OrderRow }>(`/order-lines/${lineId}`, body);
+  return res.data.data;
+}
+
+export async function addOrderLine(orderId: number, body: CreateOrderLine) {
+  const res = await api.post<{ data: OrderRow }>(`/orders/${orderId}/lines`, body);
+  return res.data.data;
+}
+
+export async function deleteOrderLine(lineId: number) {
+  const res = await api.delete<{ data: OrderRow[] }>(`/order-lines/${lineId}`);
   return res.data.data;
 }
 
@@ -130,10 +148,20 @@ export type DashboardSummary = {
   total_dispatch_kgs: number;
   pending_kgs: number;
   opening_stock_kgs: number;
+  minimum_stock_kgs: number;
   current_stock_kgs: number;
+  purchase_required_kgs: number;
   profit_per_kg_positive_sum: number;
   profit_per_kg_negative_sum: number;
   total_orders: { c: number };
+  breakdown: {
+    pending_sales_orders_kgs: number;
+    pending_purchase_orders_kgs: number;
+    incoming_material_kgs: number;
+    dispatch_kgs: number;
+    dispatch_return_kgs: number;
+    incoming_rm_return_kgs: number;
+  };
 };
 
 export async function fetchDashboardSummary() {
@@ -144,6 +172,13 @@ export async function fetchDashboardSummary() {
 export async function patchOpeningStock(opening_stock_kgs: number) {
   const res = await api.patch<{ data: { opening_stock_kgs: number } }>("/inventory/opening-stock", {
     opening_stock_kgs,
+  });
+  return res.data.data;
+}
+
+export async function patchMinimumStock(minimum_stock_kgs: number) {
+  const res = await api.patch<{ data: { minimum_stock_kgs: number } }>("/inventory/minimum-stock", {
+    minimum_stock_kgs,
   });
   return res.data.data;
 }
@@ -163,6 +198,16 @@ export async function createDispatch(orderId: number, body: { dispatch_date: str
 
 export async function fetchDispatch(orderId: number) {
   const res = await api.get<{ data: DispatchEntry[] }>(`/orders/${orderId}/dispatch`);
+  return res.data.data;
+}
+
+export async function patchDispatch(dispatchId: number, body: Partial<Pick<DispatchEntry, "dispatch_date" | "dispatch_weight" | "transport">>) {
+  const res = await api.patch<{ data: OrderRow[] }>(`/dispatch/${dispatchId}`, body);
+  return res.data.data;
+}
+
+export async function deleteDispatch(dispatchId: number) {
+  const res = await api.delete<{ data: OrderRow[] }>(`/dispatch/${dispatchId}`);
   return res.data.data;
 }
 
@@ -225,6 +270,29 @@ export async function createPurchaseReceipt(
   return res.data.data;
 }
 
+export async function patchPurchase(
+  purchaseId: number,
+  body: Partial<
+    Pick<PurchaseLedgerRow, "supplier_name" | "po_no" | "purchase_date" | "weight" | "rate" | "debit_note" | "rec_note" | "size" | "item" | "grade">
+  >,
+) {
+  const res = await api.patch<{ data: PurchaseLedgerRow }>(`/purchase/${purchaseId}`, body);
+  return res.data.data;
+}
+
+export async function patchPurchaseReceipt(
+  receiptId: number,
+  body: Partial<Pick<PurchaseReceiptRow, "receipt_date" | "weight_received" | "note">>,
+) {
+  const res = await api.patch<{ data: PurchaseLedgerRow }>(`/purchase-receipts/${receiptId}`, body);
+  return res.data.data;
+}
+
+export async function deletePurchaseReceipt(receiptId: number) {
+  const res = await api.delete<{ data: PurchaseLedgerRow }>(`/purchase-receipts/${receiptId}`);
+  return res.data.data;
+}
+
 export async function patchPurchaseRecNote(purchaseId: number, rec_note: string | null) {
   const res = await api.patch<{ data: PurchaseLedgerRow }>(`/purchase/${purchaseId}`, { rec_note });
   return res.data.data;
@@ -250,6 +318,54 @@ export async function fetchPayments(orderId: number) {
 
 export async function createPayment(orderId: number, body: { payment_date: string; amount: number; note?: string }) {
   const res = await api.post<{ data: OrderRow[] }>(`/orders/${orderId}/payments`, body);
+  return res.data.data;
+}
+
+export type SalesReturnRow = {
+  id: number;
+  order_id: number;
+  return_date: string;
+  weight: number;
+  note: string | null;
+  created_at: string;
+};
+
+export type PurchaseReturnRow = {
+  id: number;
+  purchase_entry_id: number;
+  return_date: string;
+  weight: number;
+  note: string | null;
+  created_at: string;
+};
+
+export async function fetchSalesReturns() {
+  const res = await api.get<{ data: SalesReturnRow[] }>("/returns/sales");
+  return res.data.data;
+}
+
+export async function createSalesReturn(body: { order_id: number; return_date: string; weight: number; note?: string }) {
+  const res = await api.post<{ data: { success: true } }>("/returns/sales", body);
+  return res.data.data;
+}
+
+export async function deleteSalesReturn(id: number) {
+  const res = await api.delete<{ data: { success: true } }>(`/returns/sales/${id}`);
+  return res.data.data;
+}
+
+export async function fetchPurchaseReturns() {
+  const res = await api.get<{ data: PurchaseReturnRow[] }>("/returns/purchase");
+  return res.data.data;
+}
+
+export async function createPurchaseReturn(body: { purchase_entry_id: number; return_date: string; weight: number; note?: string }) {
+  const res = await api.post<{ data: { success: true } }>("/returns/purchase", body);
+  return res.data.data;
+}
+
+export async function deletePurchaseReturn(id: number) {
+  const res = await api.delete<{ data: { success: true } }>(`/returns/purchase/${id}`);
   return res.data.data;
 }
 

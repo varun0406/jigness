@@ -58,6 +58,7 @@ export function DashboardPage() {
       totalDispatch: `${Math.round(data.total_dispatch_kgs).toLocaleString()} kg`,
       currentStock: `${Math.round(data.current_stock_kgs).toLocaleString()} kg`,
       pending: `${Math.round(data.pending_kgs).toLocaleString()} kg`,
+      purchaseRequired: `${Math.round(data.purchase_required_kgs).toLocaleString()} kg`,
     };
   }, [data]);
 
@@ -94,8 +95,9 @@ export function DashboardPage() {
           <KpiCard label="Total Orders" value={kpis.totalOrders} sub="Count of WO" />
           <KpiCard label="Total Orders (Kgs)" value={kpis.totalOrderKgs} />
           <KpiCard label="Total Dispatch" value={kpis.totalDispatch} />
-          <KpiCard label="Current Stock" value={kpis.currentStock} sub="Purchase − Dispatch − Return" />
+          <KpiCard label="Current Stock" value={kpis.currentStock} sub="Opening + Receipts + SalesReturn − Dispatch − PurchaseReturn" />
           <KpiCard label="Pending Orders" value={kpis.pending} sub="Sum of balance" />
+          <KpiCard label="Purchase Required" value={kpis.purchaseRequired} sub="Minimum + Pending sales − (net incoming + pending PO)" />
         </Box>
       ) : null}
     </Box>

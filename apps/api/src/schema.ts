@@ -124,6 +124,27 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `);
   db.exec(`INSERT OR IGNORE INTO app_settings(key, value_real) VALUES ('opening_stock_kgs', 0);`);
+  db.exec(`INSERT OR IGNORE INTO app_settings(key, value_real) VALUES ('minimum_stock_kgs', 0);`);
+
+  db.exec(`
+CREATE TABLE IF NOT EXISTS sales_returns (
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  return_date TEXT NOT NULL,
+  weight REAL NOT NULL CHECK(weight > 0),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_returns (
+  id INTEGER PRIMARY KEY,
+  purchase_entry_id INTEGER NOT NULL REFERENCES purchase_entries(id) ON DELETE CASCADE,
+  return_date TEXT NOT NULL,
+  weight REAL NOT NULL CHECK(weight > 0),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`);
 }
 
 function migrateOrderLines(db: Db) {

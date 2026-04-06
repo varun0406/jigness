@@ -34,6 +34,7 @@ const nav = [
   { to: "/billing", label: "Billing", icon: <ReceiptLongOutlinedIcon /> },
   { to: "/inventory", label: "Inventory", icon: <Inventory2OutlinedIcon /> },
   { to: "/payments", label: "Payments", icon: <PaymentsOutlinedIcon /> },
+  { to: "/returns", label: "Returns", icon: <ReceiptLongOutlinedIcon /> },
 ];
 
 export function AppShell() {

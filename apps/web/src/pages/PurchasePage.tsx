@@ -22,10 +22,12 @@ import {
   createPurchase,
   createPurchaseReceipt,
   deletePurchase,
+  deletePurchaseReceipt,
   fetchProducts,
   fetchPurchaseLedger,
   fetchPurchaseReceipts,
-  patchPurchaseRecNote,
+  patchPurchase,
+  patchPurchaseReceipt,
 } from "../lib/api";
 import type { MasterProduct, PurchaseLedgerRow, PurchaseReceiptRow } from "../lib/api";
 
@@ -149,6 +151,73 @@ export function PurchasePage() {
       }
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to save receipt");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDrawerPoPatch(
+    patch: Partial<
+      Pick<
+        PurchaseLedgerRow,
+        | "supplier_name"
+        | "po_no"
+        | "purchase_date"
+        | "weight"
+        | "rate"
+        | "debit_note"
+        | "rec_note"
+        | "size"
+        | "item"
+        | "grade"
+      >
+    >,
+  ) {
+    if (!drawerPo) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const updated = await patchPurchase(drawerPo.id, patch);
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setDrawerPo(updated);
+      if (poForReceipt?.id === updated.id) setPoForReceipt(updated);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to update PO");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveReceiptLine(
+    id: number,
+    patch: Partial<Pick<PurchaseReceiptRow, "receipt_date" | "weight_received" | "note">>,
+  ) {
+    if (!drawerPo) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const updatedPo = await patchPurchaseReceipt(id, patch);
+      setRows((prev) => prev.map((r) => (r.id === updatedPo.id ? updatedPo : r)));
+      setDrawerPo(updatedPo);
+      setReceiptLines(await fetchPurchaseReceipts(updatedPo.id));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to update receipt");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeReceiptLine(id: number) {
+    if (!drawerPo) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const updatedPo = await deletePurchaseReceipt(id);
+      setRows((prev) => prev.map((r) => (r.id === updatedPo.id ? updatedPo : r)));
+      setDrawerPo(updatedPo);
+      setReceiptLines(await fetchPurchaseReceipts(updatedPo.id));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to delete receipt");
     } finally {
       setSaving(false);
     }
@@ -449,14 +518,110 @@ export function PurchasePage() {
               Ordered <b>{money(drawerPo.weight)}</b> kg @ {money(drawerPo.rate)} → bal{" "}
               <b>{money(drawerPo.balance_weight)}</b> kg
             </Typography>
+
+            <Typography fontWeight={800} sx={{ mb: 1 }}>
+              PO details (editable)
+            </Typography>
+            <Stack spacing={1.5} sx={{ mb: 2 }}>
+              <TextField
+                label="Supplier"
+                size="small"
+                value={drawerPo.supplier_name}
+                onChange={(e) => setDrawerPo({ ...drawerPo, supplier_name: e.target.value })}
+                onBlur={() => saveDrawerPoPatch({ supplier_name: drawerPo.supplier_name })}
+                disabled={saving}
+                fullWidth
+              />
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  label="PO NO"
+                  size="small"
+                  value={drawerPo.po_no ?? ""}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, po_no: e.target.value || null })}
+                  onBlur={() => saveDrawerPoPatch({ po_no: drawerPo.po_no })}
+                  disabled={saving}
+                  fullWidth
+                />
+                <TextField
+                  label="DATE"
+                  size="small"
+                  type="date"
+                  value={drawerPo.purchase_date}
+                  InputLabelProps={{ shrink: true }}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, purchase_date: e.target.value })}
+                  onBlur={() => saveDrawerPoPatch({ purchase_date: drawerPo.purchase_date })}
+                  disabled={saving}
+                  fullWidth
+                />
+              </Stack>
+              <TextField
+                label="Raw material (Item)"
+                size="small"
+                value={drawerPo.item ?? ""}
+                onChange={(e) => setDrawerPo({ ...drawerPo, item: e.target.value || null })}
+                onBlur={() => saveDrawerPoPatch({ item: drawerPo.item ?? "" })}
+                disabled={saving}
+                fullWidth
+              />
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  label="Size"
+                  size="small"
+                  value={drawerPo.size ?? ""}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, size: e.target.value || null })}
+                  onBlur={() => saveDrawerPoPatch({ size: drawerPo.size ?? "" })}
+                  disabled={saving}
+                  fullWidth
+                />
+                <TextField
+                  label="Grade"
+                  size="small"
+                  value={drawerPo.grade ?? ""}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, grade: e.target.value || null })}
+                  onBlur={() => saveDrawerPoPatch({ grade: drawerPo.grade ?? "" })}
+                  disabled={saving}
+                  fullWidth
+                />
+              </Stack>
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  label="Weight (kg)"
+                  size="small"
+                  type="number"
+                  value={drawerPo.weight}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, weight: Number(e.target.value) })}
+                  onBlur={() => saveDrawerPoPatch({ weight: drawerPo.weight })}
+                  disabled={saving}
+                  fullWidth
+                />
+                <TextField
+                  label="Rate"
+                  size="small"
+                  type="number"
+                  value={drawerPo.rate}
+                  onChange={(e) => setDrawerPo({ ...drawerPo, rate: Number(e.target.value) })}
+                  onBlur={() => saveDrawerPoPatch({ rate: drawerPo.rate })}
+                  disabled={saving}
+                  fullWidth
+                />
+              </Stack>
+              <TextField
+                label="DEBIT NOTE"
+                size="small"
+                value={drawerPo.debit_note ?? ""}
+                onChange={(e) => setDrawerPo({ ...drawerPo, debit_note: e.target.value || null })}
+                onBlur={() => saveDrawerPoPatch({ debit_note: drawerPo.debit_note })}
+                disabled={saving}
+                fullWidth
+              />
+            </Stack>
+
             <TextField
               label="REC NOTE (header for this PO)"
               value={drawerPo.rec_note ?? ""}
               onChange={(e) => setDrawerPo({ ...drawerPo, rec_note: e.target.value || null })}
               onBlur={async () => {
-                const u = await patchPurchaseRecNote(drawerPo.id, drawerPo.rec_note);
-                setRows((prev) => prev.map((x) => (x.id === u.id ? u : x)));
-                setDrawerPo(u);
+                await saveDrawerPoPatch({ rec_note: drawerPo.rec_note });
               }}
               fullWidth
               multiline
@@ -485,12 +650,55 @@ export function PurchasePage() {
                       fontSize: 13,
                     }}
                   >
-                    <b>{line.receipt_date}</b> — {money(line.weight_received)} kg
-                    {line.note ? (
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        {line.note}
-                      </Typography>
-                    ) : null}
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        size="small"
+                        type="date"
+                        value={line.receipt_date}
+                        InputLabelProps={{ shrink: true }}
+                        onChange={(e) =>
+                          setReceiptLines((prev) =>
+                            prev.map((x) => (x.id === line.id ? { ...x, receipt_date: e.target.value } : x)),
+                          )
+                        }
+                        onBlur={() => {
+                          const current = receiptLines.find((x) => x.id === line.id);
+                          if (current) void saveReceiptLine(line.id, { receipt_date: current.receipt_date });
+                        }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={line.weight_received}
+                        onChange={(e) =>
+                          setReceiptLines((prev) =>
+                            prev.map((x) => (x.id === line.id ? { ...x, weight_received: Number(e.target.value) } : x)),
+                          )
+                        }
+                        onBlur={() => {
+                          const current = receiptLines.find((x) => x.id === line.id);
+                          if (current) void saveReceiptLine(line.id, { weight_received: current.weight_received });
+                        }}
+                        sx={{ width: 120 }}
+                      />
+                      <IconButton size="small" color="error" onClick={() => void removeReceiptLine(line.id)}>
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="Note"
+                      value={line.note ?? ""}
+                      onChange={(e) =>
+                        setReceiptLines((prev) => prev.map((x) => (x.id === line.id ? { ...x, note: e.target.value || null } : x)))
+                      }
+                      onBlur={() => {
+                        const current = receiptLines.find((x) => x.id === line.id);
+                        if (current) void saveReceiptLine(line.id, { note: current.note });
+                      }}
+                      sx={{ mt: 1 }}
+                    />
                   </Box>
                 ))}
               </Stack>

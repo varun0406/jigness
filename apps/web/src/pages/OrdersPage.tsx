@@ -25,6 +25,7 @@ import {
   fetchOrders,
   fetchPayments,
   patchOrder,
+  patchOrderMeta,
   patchOrderLine,
   deleteOrder,
 } from "../lib/api";
@@ -158,7 +159,22 @@ export function OrdersPage() {
     }
   }
 
-  async function saveLinePatch(lineId: number, body: { bill_rate?: number; avg_cost?: number }) {
+  async function saveMetaPatch(orderId: number, body: Parameters<typeof patchOrderMeta>[1]) {
+    setSaving(true);
+    try {
+      const updated = await patchOrderMeta(orderId, body);
+      setRows((prev) => mergeOrderRows(prev, updated));
+      setSelected((prev) => {
+        if (!prev) return prev;
+        const u = updated.find((x) => x.id === prev.id);
+        return u ?? prev;
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveLinePatch(lineId: number, body: Parameters<typeof patchOrderLine>[1]) {
     setSaving(true);
     try {
       const updated = await patchOrderLine(lineId, body);
@@ -468,10 +484,87 @@ export function OrdersPage() {
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
-              Billing & Payments
+              Work order (editable)
             </Typography>
 
             <Stack spacing={1.5}>
+              <TextField
+                label="WO Number"
+                size="small"
+                value={selected.wo_no}
+                onChange={(e) => setSelected({ ...selected, wo_no: e.target.value })}
+                onBlur={() => saveMetaPatch(selected.order_id, { wo_no: selected.wo_no })}
+                disabled={saving}
+              />
+              <TextField
+                label="Order date"
+                size="small"
+                type="date"
+                value={selected.order_date}
+                InputLabelProps={{ shrink: true }}
+                onChange={(e) => setSelected({ ...selected, order_date: e.target.value })}
+                onBlur={() => saveMetaPatch(selected.order_id, { order_date: selected.order_date })}
+                disabled={saving}
+              />
+              <TextField
+                label="Client name"
+                size="small"
+                value={selected.client_name}
+                onChange={(e) => setSelected({ ...selected, client_name: e.target.value })}
+                onBlur={() => saveMetaPatch(selected.order_id, { client_name: selected.client_name })}
+                disabled={saving}
+              />
+
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="subtitle2" fontWeight={800}>
+                Line item (editable)
+              </Typography>
+              <TextField
+                label="Item"
+                size="small"
+                value={selected.item}
+                onChange={(e) => setSelected({ ...selected, item: e.target.value })}
+                onBlur={() => saveLinePatch(selected.id, { item: selected.item } as any)}
+                disabled={saving}
+              />
+              <TextField
+                label="Size"
+                size="small"
+                value={selected.size}
+                onChange={(e) => setSelected({ ...selected, size: e.target.value })}
+                onBlur={() => saveLinePatch(selected.id, { size: selected.size } as any)}
+                disabled={saving}
+              />
+              <TextField
+                label="Grade"
+                size="small"
+                value={selected.grade}
+                onChange={(e) => setSelected({ ...selected, grade: e.target.value })}
+                onBlur={() => saveLinePatch(selected.id, { grade: selected.grade } as any)}
+                disabled={saving}
+              />
+              <TextField
+                label="Length / Nos"
+                size="small"
+                value={selected.length_nos ?? ""}
+                onChange={(e) => setSelected({ ...selected, length_nos: e.target.value || null })}
+                onBlur={() => saveLinePatch(selected.id, { length_nos: selected.length_nos } as any)}
+                disabled={saving}
+              />
+              <TextField
+                label="Order weight (kg)"
+                size="small"
+                type="number"
+                value={selected.order_kgs}
+                onChange={(e) => setSelected({ ...selected, order_kgs: Number(e.target.value) })}
+                onBlur={() => saveLinePatch(selected.id, { order_kgs: selected.order_kgs } as any)}
+                disabled={saving}
+              />
+
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="subtitle2" fontWeight={800}>
+                Billing & Payments (editable)
+              </Typography>
               <TextField
                 label="BILL RATE"
                 size="small"

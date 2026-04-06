@@ -10,6 +10,7 @@ import { BillingPage } from "./pages/BillingPage.tsx";
 import { InventoryPage } from "./pages/InventoryPage.tsx";
 import { PaymentsPage } from "./pages/PaymentsPage.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
+import { ReturnsPage } from "./pages/ReturnsPage.tsx";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="billing" element={<BillingPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="payments" element={<PaymentsPage />} />
+            <Route path="returns" element={<ReturnsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
