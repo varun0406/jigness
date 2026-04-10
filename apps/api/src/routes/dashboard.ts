@@ -62,9 +62,11 @@ FROM order_line_items oli
     const minimumStock = getMinimumStockKgs(db);
     const currentStock = openingStock + incomingMaterial + dispatchReturn - dispatchTotal - incomingRmReturn;
 
-    // PurchaseRequired should consider OpeningStock via CurrentStock.
-    // Formula: MinimumStock + PendingSalesOrders - (CurrentStock + PendingPurchaseOrders)
-    const purchaseRequired = minimumStock + pendingSalesOrders - (currentStock + pendingPurchaseOrders);
+    // Per requested formula:
+    // PurchaseRequired = (Opening + IncomingMaterial - MinimumStock) + PendingPurchaseOrders - DispatchTotal - PendingSalesOrders
+    // Note: returns are already included in CurrentStock, but the requested formula didn't mention them explicitly.
+    const purchaseRequired =
+      (openingStock + incomingMaterial - minimumStock) + pendingPurchaseOrders - dispatchTotal - pendingSalesOrders;
 
     return {
       data: {
