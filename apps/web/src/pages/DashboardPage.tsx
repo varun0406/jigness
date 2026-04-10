@@ -97,7 +97,7 @@ export function DashboardPage() {
           <KpiCard label="Total Dispatch" value={kpis.totalDispatch} />
           <KpiCard label="Current Stock" value={kpis.currentStock} sub="Opening + Receipts + SalesReturn − Dispatch − PurchaseReturn" />
           <KpiCard label="Pending Orders" value={kpis.pending} sub="Sum of balance" />
-          <KpiCard label="Purchase Required" value={kpis.purchaseRequired} sub="Minimum + Pending sales − (net incoming + pending PO)" />
+          <KpiCard label="Purchase Required" value={kpis.purchaseRequired} sub="Minimum + Pending sales − (Current stock + pending PO)" />
         </Box>
       ) : null}
     </Box>
