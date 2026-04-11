@@ -13,7 +13,7 @@ import {
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import { Outlet, useNavigate } from "react-router-dom";
 import { clearAuthToken } from "../lib/auth";
-import { useAuthConfig } from "./AuthGate.tsx";
+import { useAuthGate } from "./AuthGate.tsx";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
@@ -21,6 +21,7 @@ import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import LocalShippingOutlinedIcon from "@mui/icons-material/LocalShippingOutlined";
 import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
+import PersonAddOutlinedIcon from "@mui/icons-material/PersonAddOutlined";
 import { Link, useLocation } from "react-router-dom";
 
 const drawerWidth = 260;
@@ -35,12 +36,15 @@ const nav = [
   { to: "/inventory", label: "Inventory", icon: <Inventory2OutlinedIcon /> },
   { to: "/payments", label: "Payments", icon: <PaymentsOutlinedIcon /> },
   { to: "/returns", label: "Returns", icon: <ReceiptLongOutlinedIcon /> },
+  { to: "/users", label: "Users", icon: <PersonAddOutlinedIcon /> },
 ];
 
 export function AppShell() {
   const loc = useLocation();
   const navigate = useNavigate();
-  const { enabled: authEnabled } = useAuthConfig();
+  const authGate = useAuthGate();
+  const authEnabled = authGate.enabled;
+  const showUsersNav = authEnabled && authGate.session?.role === "admin";
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -77,7 +81,9 @@ export function AppShell() {
         </Toolbar>
         <Divider />
         <List dense sx={{ px: 1, py: 1 }}>
-          {nav.map((n) => (
+          {nav
+            .filter((n) => (n.to === "/users" ? showUsersNav : true))
+            .map((n) => (
             <ListItemButton
               key={n.to}
               component={Link}

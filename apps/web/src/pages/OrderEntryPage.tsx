@@ -17,13 +17,26 @@ import dayjs from "dayjs";
 import { createOrder, fetchClients, fetchProducts } from "../lib/api";
 import type { CreateOrderLine, MasterClient, MasterProduct, OrderRow } from "../lib/api";
 
-type LineDraft = CreateOrderLine;
+type LineDraft = Omit<CreateOrderLine, "length_nos"> & {
+  length: string;
+  no_of_pieces: string;
+};
+
+function lengthNosFromParts(length: string, pieces: string): string | undefined {
+  const L = length.trim();
+  const P = pieces.trim();
+  if (!L && !P) return undefined;
+  if (L && P) return `${L} | ${P} pcs`;
+  if (L) return L;
+  return `${P} pcs`;
+}
 
 const emptyLine = (): LineDraft => ({
   size: "",
   item: "",
   grade: "",
-  length_nos: "",
+  length: "",
+  no_of_pieces: "",
   order_kgs: 0,
   bill_rate: 0,
 });
@@ -57,8 +70,6 @@ export function OrderEntryPage() {
 
   const resolvedClientName = useMemo(() => (client ? client.name : clientText.trim()), [client, clientText]);
 
-
-
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) => {
       const next = [...prev];
@@ -74,7 +85,7 @@ export function OrderEntryPage() {
         size: l.size.trim() || "-",
         item: l.item.trim(),
         grade: l.grade.trim() || "-",
-        length_nos: l.length_nos?.trim() || undefined,
+        length_nos: lengthNosFromParts(l.length, l.no_of_pieces),
         order_kgs: Number(l.order_kgs),
         bill_rate: Number(l.bill_rate) || 0,
       }))
@@ -188,40 +199,61 @@ export function OrderEntryPage() {
                       </IconButton>
                     ) : null}
                   </Stack>
-                  <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                    <Autocomplete
-                      options={products}
-                      loading={loading}
-                      getOptionLabel={(o) => typeof o === "string" ? o : o.item}
-                      renderOption={(props, option) => (
-                        <li {...props}>
-                          {option.item} | {option.size} | {option.grade}
-                        </li>
-                      )}
-                      value={null}
-                      inputValue={line.item}
-                      onInputChange={(_, v, reason) => {
-                        if (reason !== "reset") updateLine(index, { item: v });
-                      }}
-                      onChange={(_, v) => {
-                        if (v && typeof v === "object") {
-                          updateLine(index, { item: v.item, size: v.size, grade: v.grade });
-                        }
-                      }}
-                      renderInput={(params) => <TextField {...params} label="Item (or select Product)" required />}
-                      freeSolo
-                      fullWidth
-                      sx={{ flex: 2 }}
-                    />
-                    <TextField label="Size" value={line.size} onChange={(e) => updateLine(index, { size: e.target.value })} fullWidth />
-                    <TextField label="Grade" value={line.grade} onChange={(e) => updateLine(index, { grade: e.target.value })} fullWidth />
+
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
+                    <Box sx={{ flex: { md: "3 1 200px" }, minWidth: 0 }}>
+                      <Autocomplete
+                        options={products}
+                        loading={loading}
+                        getOptionLabel={(o) => (typeof o === "string" ? o : o.item)}
+                        renderOption={(props, option) => (
+                          <li {...props}>
+                            {option.item} | {option.size} | {option.grade}
+                          </li>
+                        )}
+                        value={null}
+                        inputValue={line.item}
+                        onInputChange={(_, v, reason) => {
+                          if (reason !== "reset") updateLine(index, { item: v });
+                        }}
+                        onChange={(_, v) => {
+                          if (v && typeof v === "object") {
+                            updateLine(index, { item: v.item, size: v.size, grade: v.grade });
+                          }
+                        }}
+                        renderInput={(params) => <TextField {...params} label="Item (or select product)" required />}
+                        freeSolo
+                        fullWidth
+                      />
+                    </Box>
+                    <Box sx={{ flex: { md: "1.2 1 120px" }, minWidth: 0 }}>
+                      <TextField label="Size" value={line.size} onChange={(e) => updateLine(index, { size: e.target.value })} fullWidth />
+                    </Box>
+                    <Box sx={{ flex: { md: "0 0 100px" }, width: { md: 100 }, maxWidth: { md: 120 } }}>
+                      <TextField
+                        label="Grade"
+                        value={line.grade}
+                        onChange={(e) => updateLine(index, { grade: e.target.value })}
+                        fullWidth
+                        InputProps={{ sx: { "& input": { fontSize: 14 } } }}
+                      />
+                    </Box>
                   </Stack>
+
                   <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
                     <TextField
-                      label="Length / Nos"
-                      value={line.length_nos ?? ""}
-                      onChange={(e) => updateLine(index, { length_nos: e.target.value })}
+                      label="Length"
+                      value={line.length}
+                      onChange={(e) => updateLine(index, { length: e.target.value })}
                       fullWidth
+                      sx={{ flex: { md: 1 } }}
+                    />
+                    <TextField
+                      label="No. of pieces"
+                      value={line.no_of_pieces}
+                      onChange={(e) => updateLine(index, { no_of_pieces: e.target.value })}
+                      fullWidth
+                      sx={{ flex: { md: 1 } }}
                     />
                     <TextField
                       label="Order weight (kg)"
@@ -229,6 +261,7 @@ export function OrderEntryPage() {
                       value={line.order_kgs || ""}
                       onChange={(e) => updateLine(index, { order_kgs: Number(e.target.value) })}
                       fullWidth
+                      sx={{ flex: { md: "0 0 160px" }, maxWidth: { md: 200 } }}
                     />
                   </Stack>
                   <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
@@ -249,11 +282,7 @@ export function OrderEntryPage() {
             </Typography>
 
             <Box>
-              <Button
-                variant="contained"
-                onClick={submit}
-                disabled={saving || !woNo.trim() || !resolvedClientName.trim()}
-              >
+              <Button variant="contained" onClick={submit} disabled={saving || !woNo.trim() || !resolvedClientName.trim()}>
                 {saving ? "Saving…" : "Create order"}
               </Button>
             </Box>

@@ -114,6 +114,19 @@ CREATE TABLE IF NOT EXISTS order_line_items (
   migrateOrderLines(db);
   migratePurchaseSchema(db);
   migrateAppSettings(db);
+  migrateAppUsers(db);
+}
+
+function migrateAppUsers(db: Db) {
+  db.exec(`
+CREATE TABLE IF NOT EXISTS app_users (
+  id INTEGER PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`);
 }
 
 function migrateAppSettings(db: Db) {

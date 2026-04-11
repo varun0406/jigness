@@ -13,12 +13,19 @@ const EnvSchema = z
     AUTH_SECRET: z.string().optional().default(""),
   })
   .superRefine((data, ctx) => {
-    const any = Boolean(data.AUTH_USER || data.AUTH_PASS || data.AUTH_SECRET);
-    if (!any) return;
-    if (!data.AUTH_USER || !data.AUTH_PASS || !data.AUTH_SECRET) {
+    const u = data.AUTH_USER?.trim();
+    const p = data.AUTH_PASS;
+    const s = data.AUTH_SECRET?.trim();
+    if ((u && !p) || (!u && p)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Set all of AUTH_USER, AUTH_PASS, and AUTH_SECRET together, or omit all for no API auth.",
+        message: "Set both AUTH_USER and AUTH_PASS together, or omit both (database users + AUTH_SECRET only is allowed).",
+      });
+    }
+    if ((u || p) && !s) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "AUTH_SECRET is required when AUTH_USER / AUTH_PASS are set.",
       });
     }
   });

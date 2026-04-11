@@ -18,7 +18,7 @@ api.interceptors.response.use(
   (err) => {
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       const url = String(err.config?.url ?? "");
-      if (!url.includes("/auth/login")) {
+      if (!url.includes("/auth/login") && !url.includes("/auth/register-first")) {
         clearAuthToken();
         if (typeof window !== "undefined" && window.location.pathname !== "/login") {
           window.location.assign("/login");
@@ -28,6 +28,45 @@ api.interceptors.response.use(
     return Promise.reject(err);
   },
 );
+
+export type AuthStatus = {
+  enabled: boolean;
+  can_bootstrap: boolean;
+  has_db_users: boolean;
+};
+
+export async function fetchAuthStatus() {
+  const res = await api.get<AuthStatus>("/auth/status");
+  return res.data;
+}
+
+export type AuthSession = { username: string; role: "admin" | "user" };
+
+export async function fetchAuthSession() {
+  const res = await api.get<AuthSession>("/auth/session");
+  return res.data;
+}
+
+export type AppUserRow = { id: number; username: string; role: "admin" | "user"; created_at: string };
+
+export async function fetchAppUsers() {
+  const res = await api.get<{ data: AppUserRow[] }>("/auth/users");
+  return res.data.data;
+}
+
+export async function createAppUser(body: { username: string; password: string; role?: "admin" | "user" }) {
+  const res = await api.post<{ data: AppUserRow }>("/auth/users", body);
+  return res.data.data;
+}
+
+export async function deleteAppUser(id: number) {
+  await api.delete(`/auth/users/${id}`);
+}
+
+export async function registerFirstAdmin(body: { username: string; password: string }) {
+  const res = await api.post<{ token: string; expires_in: number; username: string; role: "admin" }>("/auth/register-first", body);
+  return res.data;
+}
 
 export type OrderRow = {
   /** Line item id (unique per grid row) */

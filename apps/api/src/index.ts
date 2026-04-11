@@ -12,7 +12,7 @@ import { registerPaymentsRoutes } from "./routes/payments.js";
 import { registerMastersRoutes } from "./routes/masters.js";
 import { registerInventoryRoutes } from "./routes/inventory.js";
 import { registerAuthRoutes } from "./routes/auth.js";
-import { extractBearer, verifyAuthToken } from "./auth.js";
+import { extractBearer, parseAuthToken } from "./auth.js";
 import { registerReturnsRoutes } from "./routes/returns.js";
 
 const env = loadEnv(process.env);
@@ -37,27 +37,26 @@ function pathnameOnly(url: string): string {
   return q >= 0 ? url.slice(0, q) : url;
 }
 
-const authEnabled = Boolean(env.AUTH_USER && env.AUTH_PASS && env.AUTH_SECRET);
+const db = openDb(env.DB_PATH);
+migrate(db);
+
+const authEnabled = Boolean(env.AUTH_SECRET?.trim());
 if (authEnabled) {
   app.addHook("onRequest", async (req, reply) => {
     if (req.method === "OPTIONS") return;
     const path = pathnameOnly(req.url);
     if (path === "/health") return;
-    if (path === "/auth/status" || path === "/auth/login") return;
+    if (path === "/auth/status" || path === "/auth/login" || path === "/auth/register-first") return;
     const token = extractBearer(req.headers.authorization);
-    if (!token || !verifyAuthToken(token, env.AUTH_SECRET)) {
+    if (!token || !parseAuthToken(token, env.AUTH_SECRET)) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
   });
 }
 
-const db = openDb(env.DB_PATH);
-migrate(db);
-// Keep database empty by default (no seed data).
-
 app.get("/health", async () => ({ ok: true }));
 
-await registerAuthRoutes(app, env);
+await registerAuthRoutes(app, { db, env });
 
 await registerDashboardRoutes(app, { db });
 await registerOrdersRoutes(app, { db });
@@ -69,4 +68,3 @@ await registerInventoryRoutes(app, { db });
 await registerReturnsRoutes(app, { db });
 
 await app.listen({ port: env.PORT, host: env.HOST });
-
