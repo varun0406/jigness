@@ -229,8 +229,9 @@ export function PurchasePage() {
         Raw material — Purchase orders & receipts
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Create a PO first, then record each goods-in (received weight) against that PO. Balance = ordered − received.
-        AVE on sales orders is the weighted purchase rate: Σ(receipt kg × PO rate) ÷ Σ(receipt kg) for that material.
+        Create a PO first, then record each goods-in (received weight) against that PO. Balance = ordered − received (negative
+        balance means you are within the allowed +300 kg over-receipt vs ordered). AVE on sales orders is the weighted purchase
+        rate: Σ(receipt kg × PO rate) ÷ Σ(receipt kg) for that material.
       </Typography>
 
       {err ? (
@@ -354,7 +355,8 @@ export function PurchasePage() {
               {poForReceipt ? (
                 <Typography variant="body2" color="text.secondary">
                   Ordered {money(poForReceipt.weight)} kg • Received {money(poForReceipt.received_weight)} kg • Balance{" "}
-                  <b>{money(poForReceipt.balance_weight)}</b> kg
+                  <b>{money(poForReceipt.balance_weight)}</b> kg • Max receivable total{" "}
+                  <b>{money(poForReceipt.weight + 300)}</b> kg (PO + 300 kg variance)
                 </Typography>
               ) : null}
               <Stack direction={{ xs: "column", md: "row" }} spacing={2}>

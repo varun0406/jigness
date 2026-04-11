@@ -2,6 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db.js";
 
+/** Total receipts may exceed PO ordered weight by this much (same idea as dispatch over-delivery). */
+const RECEIPT_VARIANCE_ALLOWANCE_KGS = 300;
+
+function maxReceivableForPo(poWeight: number): number {
+  return poWeight + RECEIPT_VARIANCE_ALLOWANCE_KGS;
+}
+
 const CreatePurchaseBody = z.object({
   supplier_name: z.string().trim().min(1),
   po_no: z.string().trim().optional(),
@@ -178,8 +185,11 @@ LIMIT 500
     const currentSum = db
       .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ?`)
       .get(id) as { s: number };
-    if (currentSum.s + body.weight_received > po.weight + 0.0001) {
-      return reply.code(400).send({ error: "Received total cannot exceed PO weight" });
+    const cap = maxReceivableForPo(po.weight);
+    if (currentSum.s + body.weight_received > cap + 0.0001) {
+      return reply.code(400).send({
+        error: `Received total cannot exceed PO weight + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
+      });
     }
 
     db.prepare(
@@ -202,8 +212,11 @@ LIMIT 500
     if (!existing) return reply.code(404).send({ error: "Not found" });
 
     const nextWeight = body.weight ?? existing.weight;
-    if (nextWeight < existing.received_weight - 0.0001) {
-      return reply.code(400).send({ error: "PO weight cannot be less than already received weight" });
+    const minPoWeight = Math.max(0, existing.received_weight - RECEIPT_VARIANCE_ALLOWANCE_KGS);
+    if (nextWeight < minPoWeight - 0.0001) {
+      return reply.code(400).send({
+        error: `PO weight cannot be below (received − ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg); minimum for this PO is ${minPoWeight} kg`,
+      });
     }
 
     let nextSupplierId: number | undefined;
@@ -269,8 +282,11 @@ LIMIT 500
     const sumOther = db
       .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ? AND id <> ?`)
       .get(existing.purchase_entry_id, receiptId) as { s: number };
-    if (sumOther.s + nextWeight > po.weight + 0.0001) {
-      return reply.code(400).send({ error: "Received total cannot exceed PO weight" });
+    const cap = maxReceivableForPo(po.weight);
+    if (sumOther.s + nextWeight > cap + 0.0001) {
+      return reply.code(400).send({
+        error: `Received total cannot exceed PO weight + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
+      });
     }
 
     const fields: string[] = [];
