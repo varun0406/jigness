@@ -34,6 +34,7 @@ export function DispatchPage() {
   const [dispatchDate, setDispatchDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [dispatchWeight, setDispatchWeight] = useState<number>(0);
   const [transport, setTransport] = useState("");
+  const [tallyBillsInput, setTallyBillsInput] = useState("");
 
   const [entries, setEntries] = useState<DispatchEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -73,12 +74,17 @@ export function DispatchPage() {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
         transport: transport.trim() || undefined,
+        tally_bill_nos: tallyBillsInput
+          .split(/[\n,]+/g)
+          .map((s) => s.trim())
+          .filter(Boolean),
       });
       setOrder(updated[0] ?? order);
       const list = await fetchDispatch(order.order_id);
       setEntries(list);
       setDispatchWeight(0);
       setTransport("");
+      setTallyBillsInput("");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -149,6 +155,14 @@ export function DispatchPage() {
                 fullWidth
               />
             </Stack>
+
+              <TextField
+                label="Tally bill no(s)"
+                value={tallyBillsInput}
+                onChange={(e) => setTallyBillsInput(e.target.value)}
+                placeholder="Enter bill numbers separated by comma or new line"
+                fullWidth
+              />
 
             <Box>
               <Button variant="contained" disabled={!order || saving || dispatchWeight <= 0} onClick={submit}>

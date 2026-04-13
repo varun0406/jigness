@@ -227,16 +227,25 @@ export type DispatchEntry = {
   dispatch_date: string;
   dispatch_weight: number;
   transport: string | null;
+  tally_bill_nos?: string[];
   created_at: string;
 };
 
-export async function createDispatch(orderId: number, body: { dispatch_date: string; dispatch_weight: number; transport?: string }) {
+export async function createDispatch(
+  orderId: number,
+  body: { dispatch_date: string; dispatch_weight: number; transport?: string; tally_bill_nos?: string[] },
+) {
   const res = await api.post<{ data: OrderRow[] }>(`/orders/${orderId}/dispatch`, body);
   return res.data.data;
 }
 
 export async function fetchDispatch(orderId: number) {
   const res = await api.get<{ data: DispatchEntry[] }>(`/orders/${orderId}/dispatch`);
+  return res.data.data;
+}
+
+export async function addDispatchTallyBill(dispatchId: number, bill_no: string) {
+  const res = await api.post<{ data: { success: true } }>(`/dispatch/${dispatchId}/tally-bills`, { bill_no });
   return res.data.data;
 }
 

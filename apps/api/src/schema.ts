@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS dispatch_entries (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS dispatch_tally_bills (
+  id INTEGER PRIMARY KEY,
+  dispatch_entry_id INTEGER NOT NULL REFERENCES dispatch_entries(id) ON DELETE CASCADE,
+  bill_no TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS purchase_entries (
   id INTEGER PRIMARY KEY,
   supplier_id INTEGER NOT NULL REFERENCES suppliers(id),

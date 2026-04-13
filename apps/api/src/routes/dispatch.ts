@@ -8,12 +8,17 @@ const CreateDispatchBody = z.object({
   dispatch_date: z.string().min(10),
   dispatch_weight: z.coerce.number().positive(),
   transport: z.string().trim().optional(),
+  tally_bill_nos: z.array(z.string().trim().min(1)).optional(),
 });
 
 const PatchDispatchBody = z.object({
   dispatch_date: z.string().min(10).optional(),
   dispatch_weight: z.coerce.number().positive().optional(),
   transport: z.string().trim().optional().nullable(),
+});
+
+const AddTallyBillBody = z.object({
+  bill_no: z.string().trim().min(1).max(128),
 });
 
 export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: Db }) {
@@ -56,7 +61,22 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
          FROM dispatch_entries WHERE order_id = ? ORDER BY dispatch_date DESC, id DESC`,
       )
       .all(id);
-    return { data: rows };
+    const bills = db
+      .prepare(
+        `SELECT dispatch_entry_id AS dispatch_id, bill_no
+         FROM dispatch_tally_bills
+         WHERE dispatch_entry_id IN (SELECT id FROM dispatch_entries WHERE order_id = ?)
+         ORDER BY id ASC`,
+      )
+      .all(id) as { dispatch_id: number; bill_no: string }[];
+    const map = new Map<number, string[]>();
+    for (const b of bills) {
+      const arr = map.get(b.dispatch_id) ?? [];
+      arr.push(b.bill_no);
+      map.set(b.dispatch_id, arr);
+    }
+    const out = (rows as any[]).map((r) => ({ ...r, tally_bill_nos: map.get(r.id) ?? [] }));
+    return { data: out };
   });
 
   app.post("/orders/:id/dispatch", async (req, reply) => {
@@ -75,9 +95,16 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
       return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
     }
 
-    db.prepare(
+    const info = db.prepare(
       `INSERT INTO dispatch_entries(order_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?)`,
     ).run(id, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
+
+    const dispatchId = Number(info.lastInsertRowid);
+    const bills = (body.tally_bill_nos ?? []).map((s) => s.trim()).filter(Boolean);
+    if (bills.length) {
+      const ins = db.prepare(`INSERT INTO dispatch_tally_bills(dispatch_entry_id, bill_no) VALUES (?,?)`);
+      for (const b of bills) ins.run(dispatchId, b);
+    }
 
     const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(id);
     return { data: rows };
@@ -127,6 +154,28 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
     db.prepare(`DELETE FROM dispatch_entries WHERE id = ?`).run(dispatchId);
     const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(existing.order_id);
     return { data: rows };
+  });
+
+  app.post("/dispatch/:id/tally-bills", async (req, reply) => {
+    const dispatchId = Number((req.params as { id: string }).id);
+    if (!Number.isFinite(dispatchId)) return reply.code(400).send({ error: "Invalid id" });
+    const body = AddTallyBillBody.parse(req.body);
+    const existing = db.prepare(`SELECT id, order_id FROM dispatch_entries WHERE id = ?`).get(dispatchId) as
+      | { id: number; order_id: number }
+      | undefined;
+    if (!existing) return reply.code(404).send({ error: "Dispatch entry not found" });
+    db.prepare(`INSERT INTO dispatch_tally_bills(dispatch_entry_id, bill_no) VALUES (?,?)`).run(dispatchId, body.bill_no);
+    return { data: { success: true } };
+  });
+
+  app.delete("/dispatch/:dispatchId/tally-bills/:billId", async (req, reply) => {
+    const dispatchId = Number((req.params as { dispatchId: string }).dispatchId);
+    const billId = Number((req.params as { billId: string }).billId);
+    if (!Number.isFinite(dispatchId) || !Number.isFinite(billId)) return reply.code(400).send({ error: "Invalid id" });
+    const existing = db.prepare(`SELECT id FROM dispatch_entries WHERE id = ?`).get(dispatchId);
+    if (!existing) return reply.code(404).send({ error: "Dispatch entry not found" });
+    db.prepare(`DELETE FROM dispatch_tally_bills WHERE id = ? AND dispatch_entry_id = ?`).run(billId, dispatchId);
+    return { data: { success: true } };
   });
 }
 
