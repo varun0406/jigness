@@ -15,16 +15,6 @@ import dayjs from "dayjs";
 import { createDispatch, fetchDispatch, fetchOrders } from "../lib/api";
 import type { DispatchEntry, OrderRow } from "../lib/api";
 
-function uniqueByOrder(rows: OrderRow[]): OrderRow[] {
-  const seen = new Set<number>();
-  const out: OrderRow[] = [];
-  for (const r of rows) {
-    if (seen.has(r.order_id)) continue;
-    seen.add(r.order_id);
-    out.push(r);
-  }
-  return out;
-}
 
 export function DispatchPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -41,7 +31,7 @@ export function DispatchPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const woOptions = useMemo(() => uniqueByOrder(orders), [orders]);
+
 
   useEffect(() => {
     setLoadingOrders(true);
@@ -54,7 +44,7 @@ export function DispatchPage() {
   useEffect(() => {
     if (!order) return;
     setLoadingEntries(true);
-    fetchDispatch(order.order_id)
+    fetchDispatch(order.id)
       .then(setEntries)
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : "Failed to load dispatch entries"))
       .finally(() => setLoadingEntries(false));
@@ -70,7 +60,7 @@ export function DispatchPage() {
     setSaving(true);
     setErr(null);
     try {
-      const updated = await createDispatch(order.order_id, {
+      const updated = await createDispatch(order.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
         transport: transport.trim() || undefined,
@@ -79,8 +69,8 @@ export function DispatchPage() {
           .map((s) => s.trim())
           .filter(Boolean),
       });
-      setOrder(updated[0] ?? order);
-      const list = await fetchDispatch(order.order_id);
+      setOrder(updated.find(u => u.id === order.id) ?? updated[0] ?? order);
+      const list = await fetchDispatch(order.id);
       setEntries(list);
       setDispatchWeight(0);
       setTransport("");
@@ -108,16 +98,17 @@ export function DispatchPage() {
         <CardContent>
           <Stack spacing={2}>
             <Autocomplete
-              options={woOptions}
+              options={orders}
+              groupBy={(option) => `${option.wo_no} • ${option.client_name}`}
               loading={loadingOrders}
               value={order}
               onChange={(_, v) => setOrder(v)}
-              getOptionLabel={(o) => `${o.wo_no} • ${o.client_name} • ${o.item} ${o.size} ${o.grade}`}
+              getOptionLabel={(o) => `${o.item} ${o.size} ${o.grade} (${o.balance_kgs} kg pending)`}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Select WO"
-                  placeholder="Search WO / client…"
+                  label="Select Line Item"
+                  placeholder="Search WO / client / product…"
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
