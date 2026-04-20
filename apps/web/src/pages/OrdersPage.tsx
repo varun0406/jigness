@@ -105,7 +105,7 @@ export function OrdersPage() {
   useEffect(() => {
     if (!selected) return;
     setDrawerLoading(true);
-    Promise.all([fetchDispatch(selected.order_id), fetchPayments(selected.order_id)])
+    Promise.all([fetchDispatch(selected.id), fetchPayments(selected.order_id)])
       .then(([d, p]) => {
         setDispatchEntries(d);
         setPaymentEntries(p);
@@ -189,12 +189,12 @@ export function OrdersPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const updated = await createDispatch(selected.order_id, {
+      const updated = await createDispatch(selected.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
         transport: transport.trim() || undefined,
       });
-      setDispatchEntries(await fetchDispatch(selected.order_id));
+      setDispatchEntries(await fetchDispatch(selected.id));
       setRows((prev) => mergeOrderRows(prev, updated));
       setSelected((prev) => {
         if (!prev) return prev;
@@ -618,7 +618,7 @@ export function OrdersPage() {
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
-              Dispatch (whole WO)
+              Dispatch (this line item)
             </Typography>
             {drawerLoading ? (
               <Typography variant="body2" color="text.secondary">

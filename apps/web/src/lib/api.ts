@@ -232,15 +232,15 @@ export type DispatchEntry = {
 };
 
 export async function createDispatch(
-  orderId: number,
+  lineId: number,
   body: { dispatch_date: string; dispatch_weight: number; transport?: string; tally_bill_nos?: string[] },
 ) {
-  const res = await api.post<{ data: OrderRow[] }>(`/orders/${orderId}/dispatch`, body);
+  const res = await api.post<{ data: OrderRow[] }>(`/order-lines/${lineId}/dispatch`, body);
   return res.data.data;
 }
 
-export async function fetchDispatch(orderId: number) {
-  const res = await api.get<{ data: DispatchEntry[] }>(`/orders/${orderId}/dispatch`);
+export async function fetchDispatch(lineId: number) {
+  const res = await api.get<{ data: DispatchEntry[] }>(`/order-lines/${lineId}/dispatch`);
   return res.data.data;
 }
 

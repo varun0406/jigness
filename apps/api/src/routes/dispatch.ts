@@ -24,51 +24,51 @@ const AddTallyBillBody = z.object({
 export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: Db }) {
   const { db } = opts;
 
-  function orderTotalKgs(orderId: number): number {
+  function lineTotalKgs(lineId: number): number {
     const totalKgs = db
-      .prepare(`SELECT COALESCE(SUM(order_kgs),0) AS t FROM order_line_items WHERE order_id = ?`)
-      .get(orderId) as { t: number };
+      .prepare(`SELECT COALESCE(order_kgs, 0) AS t FROM order_line_items WHERE id = ?`)
+      .get(lineId) as { t: number };
     return totalKgs.t;
   }
 
-  function dispatchedSoFar(orderId: number, excludeDispatchId?: number): number {
+  function dispatchedSoFar(lineId: number, excludeDispatchId?: number): number {
     if (excludeDispatchId) {
       const row = db
-        .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_id = ? AND id <> ?`)
-        .get(orderId, excludeDispatchId) as { w: number };
+        .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_line_item_id = ? AND id <> ?`)
+        .get(lineId, excludeDispatchId) as { w: number };
       return row.w;
     }
     const row = db
-      .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_id = ?`)
-      .get(orderId) as { w: number };
+      .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_line_item_id = ?`)
+      .get(lineId) as { w: number };
     return row.w;
   }
 
-  function assertDispatchWithinAllowance(orderId: number, newTotalDispatch: number) {
-    const total = orderTotalKgs(orderId);
+  function assertDispatchWithinAllowance(lineId: number, newTotalDispatch: number) {
+    const total = lineTotalKgs(lineId);
     const maxAllowed = total + OVER_DISPATCH_ALLOWANCE_KGS;
     if (newTotalDispatch > maxAllowed + 0.0001) {
-      throw new Error(`Dispatch exceeds allowed maximum (${maxAllowed} kg) for this order`);
+      throw new Error(`Dispatch exceeds allowed maximum (${maxAllowed} kg) for this line`);
     }
   }
 
-  app.get("/orders/:id/dispatch", async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isFinite(id)) return reply.code(400).send({ error: "Invalid id" });
+  app.get("/order-lines/:lineId/dispatch", async (req, reply) => {
+    const lineId = Number((req.params as { lineId: string }).lineId);
+    if (!Number.isFinite(lineId)) return reply.code(400).send({ error: "Invalid line id" });
     const rows = db
       .prepare(
         `SELECT id, dispatch_date, dispatch_weight, transport, created_at
-         FROM dispatch_entries WHERE order_id = ? ORDER BY dispatch_date DESC, id DESC`,
+         FROM dispatch_entries WHERE order_line_item_id = ? ORDER BY dispatch_date DESC, id DESC`,
       )
-      .all(id);
+      .all(lineId);
     const bills = db
       .prepare(
         `SELECT dispatch_entry_id AS dispatch_id, bill_no
          FROM dispatch_tally_bills
-         WHERE dispatch_entry_id IN (SELECT id FROM dispatch_entries WHERE order_id = ?)
+         WHERE dispatch_entry_id IN (SELECT id FROM dispatch_entries WHERE order_line_item_id = ?)
          ORDER BY id ASC`,
       )
-      .all(id) as { dispatch_id: number; bill_no: string }[];
+      .all(lineId) as { dispatch_id: number; bill_no: string }[];
     const map = new Map<number, string[]>();
     for (const b of bills) {
       const arr = map.get(b.dispatch_id) ?? [];
@@ -79,25 +79,25 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
     return { data: out };
   });
 
-  app.post("/orders/:id/dispatch", async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
-    if (!Number.isFinite(id)) return reply.code(400).send({ error: "Invalid id" });
+  app.post("/order-lines/:lineId/dispatch", async (req, reply) => {
+    const lineId = Number((req.params as { lineId: string }).lineId);
+    if (!Number.isFinite(lineId)) return reply.code(400).send({ error: "Invalid line id" });
 
     const body = CreateDispatchBody.parse(req.body);
 
-    const orderExists = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(id) as { id: number } | undefined;
-    if (!orderExists) return reply.code(404).send({ error: "Order not found" });
+    const lineExists = db.prepare(`SELECT order_id FROM order_line_items WHERE id = ?`).get(lineId) as { order_id: number } | undefined;
+    if (!lineExists) return reply.code(404).send({ error: "Line item not found" });
 
     try {
-      const already = dispatchedSoFar(id);
-      assertDispatchWithinAllowance(id, already + body.dispatch_weight);
+      const already = dispatchedSoFar(lineId);
+      assertDispatchWithinAllowance(lineId, already + body.dispatch_weight);
     } catch (e: unknown) {
       return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
     }
 
     const info = db.prepare(
-      `INSERT INTO dispatch_entries(order_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?)`,
-    ).run(id, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
+      `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?,?)`,
+    ).run(lineExists.order_id, lineId, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
 
     const dispatchId = Number(info.lastInsertRowid);
     const bills = (body.tally_bill_nos ?? []).map((s) => s.trim()).filter(Boolean);
@@ -106,7 +106,7 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
       for (const b of bills) ins.run(dispatchId, b);
     }
 
-    const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(id);
+    const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(lineExists.order_id);
     return { data: rows };
   });
 
@@ -118,14 +118,14 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
     if (Object.keys(body).length === 0) return reply.code(400).send({ error: "No fields" });
 
     const existing = db
-      .prepare(`SELECT id, order_id, dispatch_weight FROM dispatch_entries WHERE id = ?`)
-      .get(dispatchId) as { id: number; order_id: number; dispatch_weight: number } | undefined;
+      .prepare(`SELECT id, order_line_item_id, order_id, dispatch_weight FROM dispatch_entries WHERE id = ?`)
+      .get(dispatchId) as { id: number; order_line_item_id: number; order_id: number; dispatch_weight: number } | undefined;
     if (!existing) return reply.code(404).send({ error: "Dispatch entry not found" });
 
     const nextWeight = body.dispatch_weight ?? existing.dispatch_weight;
     try {
-      const alreadyExcludingThis = dispatchedSoFar(existing.order_id, dispatchId);
-      assertDispatchWithinAllowance(existing.order_id, alreadyExcludingThis + nextWeight);
+      const alreadyExcludingThis = dispatchedSoFar(existing.order_line_item_id, dispatchId);
+      assertDispatchWithinAllowance(existing.order_line_item_id, alreadyExcludingThis + nextWeight);
     } catch (e: unknown) {
       return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
     }

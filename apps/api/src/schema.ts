@@ -58,6 +58,7 @@ END;
 CREATE TABLE IF NOT EXISTS dispatch_entries (
   id INTEGER PRIMARY KEY,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  order_line_item_id INTEGER REFERENCES order_line_items(id) ON DELETE CASCADE,
   dispatch_date TEXT NOT NULL,
   dispatch_weight REAL NOT NULL CHECK(dispatch_weight > 0),
   transport TEXT,
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS order_line_items (
 `);
   migrateOrderLines(db);
   migratePurchaseSchema(db);
+  migrateDispatchSchema(db);
   migrateAppSettings(db);
   migrateAppUsers(db);
 }
@@ -199,10 +201,10 @@ SELECT
   oli.grade,
   oli.length_nos,
   oli.order_kgs,
-  COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_id = o.id), 0) AS dispatch_weight,
+  COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0) AS dispatch_weight,
   (
-    (SELECT COALESCE(SUM(oli2.order_kgs), 0) FROM order_line_items oli2 WHERE oli2.order_id = o.id)
-    - COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_id = o.id), 0)
+    oli.order_kgs
+    - COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0)
   ) AS balance_kgs,
   oli.avg_cost,
   oli.bill_rate,
@@ -268,6 +270,19 @@ UPDATE purchase_entries SET received_weight = (
 `);
 }
 
+function migrateDispatchSchema(db: Db) {
+  if (!columnExists(db, "dispatch_entries", "order_line_item_id")) {
+    db.exec(`ALTER TABLE dispatch_entries ADD COLUMN order_line_item_id INTEGER REFERENCES order_line_items(id) ON DELETE CASCADE`);
+    db.exec(`
+      UPDATE dispatch_entries 
+      SET order_line_item_id = (
+        SELECT id FROM order_line_items WHERE order_line_items.order_id = dispatch_entries.order_id LIMIT 1
+      )
+      WHERE order_line_item_id IS NULL;
+    `);
+  }
+}
+
 export function seed(db: Db) {
   const orderCount = db.prepare(`SELECT COUNT(1) as c FROM orders`).get() as { c: number };
   if (orderCount.c > 0) return;
@@ -288,10 +303,7 @@ export function seed(db: Db) {
       @invoice_no, @invoice_total, @paid_amount
     )
   `);
-  const insDispatch = db.prepare(
-    `INSERT INTO dispatch_entries(order_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?)`,
-  );
-
+  
   const clientA = Number(insClient.run("Shree Metals").lastInsertRowid);
   const clientB = Number(insClient.run("Kiran Industries").lastInsertRowid);
   insSupplier.run("Om Suppliers");
@@ -340,14 +352,17 @@ export function seed(db: Db) {
     }).lastInsertRowid,
   );
 
-  insDispatch.run(o1, "2026-04-01", 400, "Truck");
-  insDispatch.run(o1, "2026-04-02", 500, "Tempo");
-  insDispatch.run(o2, "2026-04-02", 750, "Truck");
-
   const insLine = db.prepare(
     `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, bill_rate, avg_cost) VALUES (?,?,?,?,?,?,?,?)`,
   );
-  insLine.run(o1, "8mm", "Copper Rod", "ETP", "Nos: 25", 1200, 760, 720);
-  insLine.run(o2, "50x50", "Copper Section", "DHP", "Length: 12ft", 800, 670, 690);
+  const lineO1 = Number(insLine.run(o1, "8mm", "Copper Rod", "ETP", "Nos: 25", 1200, 760, 720).lastInsertRowid);
+  const lineO2 = Number(insLine.run(o2, "50x50", "Copper Section", "DHP", "Length: 12ft", 800, 670, 690).lastInsertRowid);
+
+  const insDispatch = db.prepare(
+    `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?,?)`,
+  );
+  insDispatch.run(o1, lineO1, "2026-04-01", 400, "Truck");
+  insDispatch.run(o1, lineO1, "2026-04-02", 500, "Tempo");
+  insDispatch.run(o2, lineO2, "2026-04-02", 750, "Truck");
 }
 
