@@ -244,6 +244,20 @@ export async function fetchDispatch(orderId: number) {
   return res.data.data;
 }
 
+// Item-wise dispatch (compat with older/newer backends)
+export async function fetchDispatchForLine(lineId: number) {
+  const res = await api.get<{ data: DispatchEntry[] }>(`/order-lines/${lineId}/dispatch`);
+  return res.data.data;
+}
+
+export async function createDispatchForLine(
+  lineId: number,
+  body: { dispatch_date: string; dispatch_weight: number; transport?: string; tally_bill_nos?: string[] },
+) {
+  const res = await api.post<{ data: OrderRow[] }>(`/order-lines/${lineId}/dispatch`, body);
+  return res.data.data;
+}
+
 export async function addDispatchTallyBill(dispatchId: number, bill_no: string) {
   const res = await api.post<{ data: { success: true } }>(`/dispatch/${dispatchId}/tally-bills`, { bill_no });
   return res.data.data;

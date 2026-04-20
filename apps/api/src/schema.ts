@@ -281,6 +281,15 @@ function migrateDispatchSchema(db: Db) {
       WHERE order_line_item_id IS NULL;
     `);
   }
+
+  db.exec(`
+CREATE TABLE IF NOT EXISTS dispatch_tally_bills (
+  id INTEGER PRIMARY KEY,
+  dispatch_entry_id INTEGER NOT NULL REFERENCES dispatch_entries(id) ON DELETE CASCADE,
+  bill_no TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`);
 }
 
 export function seed(db: Db) {

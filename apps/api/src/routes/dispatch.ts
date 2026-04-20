@@ -24,6 +24,34 @@ const AddTallyBillBody = z.object({
 export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: Db }) {
   const { db } = opts;
 
+  function orderTotalKgs(orderId: number): number {
+    const row = db
+      .prepare(`SELECT COALESCE(SUM(order_kgs), 0) AS t FROM order_line_items WHERE order_id = ?`)
+      .get(orderId) as { t: number };
+    return row.t;
+  }
+
+  function dispatchedSoFarForOrder(orderId: number, excludeDispatchId?: number): number {
+    if (excludeDispatchId) {
+      const row = db
+        .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_id = ? AND id <> ?`)
+        .get(orderId, excludeDispatchId) as { w: number };
+      return row.w;
+    }
+    const row = db
+      .prepare(`SELECT COALESCE(SUM(dispatch_weight),0) AS w FROM dispatch_entries WHERE order_id = ?`)
+      .get(orderId) as { w: number };
+    return row.w;
+  }
+
+  function assertDispatchWithinAllowanceForOrder(orderId: number, newTotalDispatch: number) {
+    const total = orderTotalKgs(orderId);
+    const maxAllowed = total + OVER_DISPATCH_ALLOWANCE_KGS;
+    if (newTotalDispatch > maxAllowed + 0.0001) {
+      throw new Error(`Dispatch exceeds allowed maximum (${maxAllowed} kg) for this WO`);
+    }
+  }
+
   function lineTotalKgs(lineId: number): number {
     const totalKgs = db
       .prepare(`SELECT COALESCE(order_kgs, 0) AS t FROM order_line_items WHERE id = ?`)
@@ -51,6 +79,70 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
       throw new Error(`Dispatch exceeds allowed maximum (${maxAllowed} kg) for this line`);
     }
   }
+
+  // Work-order dispatch routes (WO-level). Kept for compatibility with existing UI.
+  app.get("/orders/:orderId/dispatch", async (req, reply) => {
+    const orderId = Number((req.params as { orderId: string }).orderId);
+    if (!Number.isFinite(orderId)) return reply.code(400).send({ error: "Invalid order id" });
+    const order = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(orderId);
+    if (!order) return reply.code(404).send({ error: "Order not found" });
+
+    const rows = db
+      .prepare(
+        `SELECT id, dispatch_date, dispatch_weight, transport, created_at
+         FROM dispatch_entries WHERE order_id = ? ORDER BY dispatch_date DESC, id DESC`,
+      )
+      .all(orderId);
+    const bills = db
+      .prepare(
+        `SELECT dispatch_entry_id AS dispatch_id, bill_no
+         FROM dispatch_tally_bills
+         WHERE dispatch_entry_id IN (SELECT id FROM dispatch_entries WHERE order_id = ?)
+         ORDER BY id ASC`,
+      )
+      .all(orderId) as { dispatch_id: number; bill_no: string }[];
+    const map = new Map<number, string[]>();
+    for (const b of bills) {
+      const arr = map.get(b.dispatch_id) ?? [];
+      arr.push(b.bill_no);
+      map.set(b.dispatch_id, arr);
+    }
+    const out = (rows as any[]).map((r) => ({ ...r, tally_bill_nos: map.get(r.id) ?? [] }));
+    return { data: out };
+  });
+
+  app.post("/orders/:orderId/dispatch", async (req, reply) => {
+    const orderId = Number((req.params as { orderId: string }).orderId);
+    if (!Number.isFinite(orderId)) return reply.code(400).send({ error: "Invalid order id" });
+    const body = CreateDispatchBody.parse(req.body);
+
+    const order = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(orderId) as { id: number } | undefined;
+    if (!order) return reply.code(404).send({ error: "Order not found" });
+
+    try {
+      const already = dispatchedSoFarForOrder(orderId);
+      assertDispatchWithinAllowanceForOrder(orderId, already + body.dispatch_weight);
+    } catch (e: unknown) {
+      return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
+    }
+
+    // For WO-level dispatch, order_line_item_id is not set.
+    const info = db
+      .prepare(
+        `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?,?)`,
+      )
+      .run(orderId, null, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
+
+    const dispatchId = Number(info.lastInsertRowid);
+    const bills = (body.tally_bill_nos ?? []).map((s) => s.trim()).filter(Boolean);
+    if (bills.length) {
+      const ins = db.prepare(`INSERT INTO dispatch_tally_bills(dispatch_entry_id, bill_no) VALUES (?,?)`);
+      for (const b of bills) ins.run(dispatchId, b);
+    }
+
+    const rows = db.prepare(`SELECT * FROM v_orders WHERE order_id = ? ORDER BY id ASC`).all(orderId);
+    return { data: rows };
+  });
 
   app.get("/order-lines/:lineId/dispatch", async (req, reply) => {
     const lineId = Number((req.params as { lineId: string }).lineId);
@@ -119,13 +211,18 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
 
     const existing = db
       .prepare(`SELECT id, order_line_item_id, order_id, dispatch_weight FROM dispatch_entries WHERE id = ?`)
-      .get(dispatchId) as { id: number; order_line_item_id: number; order_id: number; dispatch_weight: number } | undefined;
+      .get(dispatchId) as { id: number; order_line_item_id: number | null; order_id: number; dispatch_weight: number } | undefined;
     if (!existing) return reply.code(404).send({ error: "Dispatch entry not found" });
 
     const nextWeight = body.dispatch_weight ?? existing.dispatch_weight;
     try {
-      const alreadyExcludingThis = dispatchedSoFar(existing.order_line_item_id, dispatchId);
-      assertDispatchWithinAllowance(existing.order_line_item_id, alreadyExcludingThis + nextWeight);
+      if (existing.order_line_item_id) {
+        const alreadyExcludingThis = dispatchedSoFar(existing.order_line_item_id, dispatchId);
+        assertDispatchWithinAllowance(existing.order_line_item_id, alreadyExcludingThis + nextWeight);
+      } else {
+        const alreadyExcludingThis = dispatchedSoFarForOrder(existing.order_id, dispatchId);
+        assertDispatchWithinAllowanceForOrder(existing.order_id, alreadyExcludingThis + nextWeight);
+      }
     } catch (e: unknown) {
       return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
     }
