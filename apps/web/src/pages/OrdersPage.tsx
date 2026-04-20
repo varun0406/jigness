@@ -122,9 +122,9 @@ export function OrdersPage() {
     const lineCount = rows.length;
     const orderCount = new Set(rows.map((r) => r.order_id)).size;
     const orderKgs = sum(rows.map((r) => r.order_kgs));
-    const pending = sumOncePerOrder(rows, (r) => Math.max(0, r.balance_kgs));
-    const dispatchKgs = sumOncePerOrder(rows, (r) => r.dispatch_weight);
-    const balanceKgs = sumOncePerOrder(rows, (r) => Math.max(0, r.balance_kgs));
+    const pending = sum(rows.map((r) => Math.max(0, r.balance_kgs)));
+    const dispatchKgs = sum(rows.map((r) => r.dispatch_weight));
+    const balanceKgs = sum(rows.map((r) => Math.max(0, r.balance_kgs)));
     const invoiceTotal = sumOncePerOrder(rows, (r) => r.invoice_total);
     const paidTotal = sumOncePerOrder(rows, (r) => r.paid_amount);
     const bakiTotal = sumOncePerOrder(rows, (r) => r.baki_amount);
