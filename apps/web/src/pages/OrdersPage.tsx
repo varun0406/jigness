@@ -20,9 +20,9 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { Link as RouterLink } from "react-router-dom";
 import dayjs from "dayjs";
 import {
-  createDispatch,
+  createDispatchForLine,
   createPayment,
-  fetchDispatch,
+  fetchDispatchForLine,
   fetchOrders,
   fetchPayments,
   fetchProducts,
@@ -85,9 +85,14 @@ export function OrdersPage() {
   const [dispatchDate, setDispatchDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [dispatchWeight, setDispatchWeight] = useState<number>(0);
   const [transport, setTransport] = useState("");
+  const [tallyBillsInput, setTallyBillsInput] = useState("");
   const [paymentDate, setPaymentDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentNote, setPaymentNote] = useState("");
+
+  const [editWo, setEditWo] = useState(false);
+  const [editLine, setEditLine] = useState(false);
+  const [editBilling, setEditBilling] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -118,7 +123,7 @@ export function OrdersPage() {
   useEffect(() => {
     if (!selected) return;
     setDrawerLoading(true);
-    Promise.all([fetchDispatch(selected.id), fetchPayments(selected.order_id)])
+    Promise.all([fetchDispatchForLine(selected.id), fetchPayments(selected.order_id)])
       .then(([d, p]) => {
         setDispatchEntries(d);
         setPaymentEntries(p);
@@ -202,12 +207,16 @@ export function OrdersPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const updated = await createDispatch(selected.id, {
+      const updated = await createDispatchForLine(selected.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
         transport: transport.trim() || undefined,
+        tally_bill_nos: tallyBillsInput
+          .split(/[\n,]+/g)
+          .map((s) => s.trim())
+          .filter(Boolean),
       });
-      setDispatchEntries(await fetchDispatch(selected.id));
+      setDispatchEntries(await fetchDispatchForLine(selected.id));
       setRows((prev) => mergeOrderRows(prev, updated));
       setSelected((prev) => {
         if (!prev) return prev;
@@ -216,6 +225,7 @@ export function OrdersPage() {
       });
       setDispatchWeight(0);
       setTransport("");
+      setTallyBillsInput("");
     } finally {
       setSaving(false);
     }
@@ -496,9 +506,39 @@ export function OrdersPage() {
 
             <Divider sx={{ my: 2 }} />
 
-            <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
-              Work order (editable)
-            </Typography>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="subtitle2" fontWeight={800}>
+                Work order
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                {editWo ? (
+                  <>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={saving}
+                      onClick={async () => {
+                        await saveMetaPatch(selected.order_id, {
+                          wo_no: selected.wo_no,
+                          order_date: selected.order_date,
+                          client_name: selected.client_name,
+                        });
+                        setEditWo(false);
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button size="small" variant="outlined" disabled={saving} onClick={() => setEditWo(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button size="small" variant="outlined" onClick={() => setEditWo(true)}>
+                    Edit
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
 
             <Stack spacing={1.5}>
               <TextField
@@ -506,8 +546,7 @@ export function OrdersPage() {
                 size="small"
                 value={selected.wo_no}
                 onChange={(e) => setSelected({ ...selected, wo_no: e.target.value })}
-                onBlur={() => saveMetaPatch(selected.order_id, { wo_no: selected.wo_no })}
-                disabled={saving}
+                disabled={saving || !editWo}
               />
               <TextField
                 label="Order date"
@@ -516,30 +555,60 @@ export function OrdersPage() {
                 value={selected.order_date}
                 InputLabelProps={{ shrink: true }}
                 onChange={(e) => setSelected({ ...selected, order_date: e.target.value })}
-                onBlur={() => saveMetaPatch(selected.order_id, { order_date: selected.order_date })}
-                disabled={saving}
+                disabled={saving || !editWo}
               />
               <TextField
                 label="Client name"
                 size="small"
                 value={selected.client_name}
                 onChange={(e) => setSelected({ ...selected, client_name: e.target.value })}
-                onBlur={() => saveMetaPatch(selected.order_id, { client_name: selected.client_name })}
-                disabled={saving}
+                disabled={saving || !editWo}
               />
 
               <Divider sx={{ my: 1 }} />
-              <Typography variant="subtitle2" fontWeight={800}>
-                Line item (editable)
-              </Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle2" fontWeight={800}>
+                  Line item
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  {editLine ? (
+                    <>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={saving}
+                        onClick={async () => {
+                          await saveLinePatch(selected.id, {
+                            item: selected.item,
+                            size: selected.size,
+                            grade: selected.grade,
+                            length_nos: selected.length_nos,
+                            order_kgs: selected.order_kgs,
+                          });
+                          setEditLine(false);
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <Button size="small" variant="outlined" disabled={saving} onClick={() => setEditLine(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="small" variant="outlined" onClick={() => setEditLine(true)}>
+                      Edit
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
               <Autocomplete
                 options={itemOptions}
                 freeSolo
                 value={selected.item || null}
                 inputValue={selected.item}
                 onInputChange={(_, v) => setSelected({ ...selected, item: v, size: "", grade: "" })}
-                onBlur={() => saveLinePatch(selected.id, { item: selected.item })}
                 renderInput={(params) => <TextField {...params} label="Item" size="small" />}
+                disabled={saving || !editLine}
               />
 
               <Stack direction="row" spacing={1}>
@@ -551,9 +620,9 @@ export function OrdersPage() {
                   value={selected.size || null}
                   inputValue={selected.size}
                   onInputChange={(_, v) => setSelected({ ...selected, size: v, grade: "" })}
-                  onBlur={() => saveLinePatch(selected.id, { size: selected.size })}
                   renderInput={(params) => <TextField {...params} label="Size" size="small" />}
                   sx={{ flex: 1 }}
+                  disabled={saving || !editLine}
                 />
                 <Autocomplete
                   options={[...new Set(products.filter((p) => p.item === selected.item && p.size === selected.size).map((p) => p.grade))].sort(
@@ -563,9 +632,9 @@ export function OrdersPage() {
                   value={selected.grade || null}
                   inputValue={selected.grade}
                   onInputChange={(_, v) => setSelected({ ...selected, grade: v })}
-                  onBlur={() => saveLinePatch(selected.id, { grade: selected.grade })}
                   renderInput={(params) => <TextField {...params} label="Grade" size="small" />}
                   sx={{ flex: 1 }}
+                  disabled={saving || !editLine}
                 />
               </Stack>
               <TextField
@@ -573,8 +642,7 @@ export function OrdersPage() {
                 size="small"
                 value={selected.length_nos ?? ""}
                 onChange={(e) => setSelected({ ...selected, length_nos: e.target.value || null })}
-                onBlur={() => saveLinePatch(selected.id, { length_nos: selected.length_nos } as any)}
-                disabled={saving}
+                disabled={saving || !editLine}
               />
               <TextField
                 label="Order weight (kg)"
@@ -582,22 +650,51 @@ export function OrdersPage() {
                 type="number"
                 value={selected.order_kgs}
                 onChange={(e) => setSelected({ ...selected, order_kgs: Number(e.target.value) })}
-                onBlur={() => saveLinePatch(selected.id, { order_kgs: selected.order_kgs } as any)}
-                disabled={saving}
+                disabled={saving || !editLine}
               />
 
               <Divider sx={{ my: 1 }} />
-              <Typography variant="subtitle2" fontWeight={800}>
-                Billing & Payments (editable)
-              </Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle2" fontWeight={800}>
+                  Billing & Payments
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  {editBilling ? (
+                    <>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={saving}
+                        onClick={async () => {
+                          await saveLinePatch(selected.id, { bill_rate: selected.bill_rate, avg_cost: selected.avg_cost });
+                          await saveHeaderPatch(selected.order_id, {
+                            invoice_no: selected.invoice_no,
+                            invoice_total: selected.invoice_total,
+                            paid_amount: selected.paid_amount,
+                          });
+                          setEditBilling(false);
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <Button size="small" variant="outlined" disabled={saving} onClick={() => setEditBilling(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="small" variant="outlined" onClick={() => setEditBilling(true)}>
+                      Edit
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
               <TextField
                 label="BILL RATE"
                 size="small"
                 type="number"
                 value={selected.bill_rate}
                 onChange={(e) => setSelected({ ...selected, bill_rate: Number(e.target.value) })}
-                onBlur={() => saveLinePatch(selected.id, { bill_rate: selected.bill_rate })}
-                disabled={saving}
+                disabled={saving || !editBilling}
               />
               <TextField
                 label="AVE (avg cost)"
@@ -605,16 +702,14 @@ export function OrdersPage() {
                 type="number"
                 value={selected.avg_cost}
                 onChange={(e) => setSelected({ ...selected, avg_cost: Number(e.target.value) })}
-                onBlur={() => saveLinePatch(selected.id, { avg_cost: selected.avg_cost })}
-                disabled={saving}
+                disabled={saving || !editBilling}
               />
               <TextField
                 label="Invoice No"
                 size="small"
                 value={selected.invoice_no ?? ""}
                 onChange={(e) => setSelected({ ...selected, invoice_no: e.target.value || null })}
-                onBlur={() => saveHeaderPatch(selected.order_id, { invoice_no: selected.invoice_no })}
-                disabled={saving}
+                disabled={saving || !editBilling}
               />
               <TextField
                 label="Invoice Total"
@@ -622,8 +717,7 @@ export function OrdersPage() {
                 type="number"
                 value={selected.invoice_total}
                 onChange={(e) => setSelected({ ...selected, invoice_total: Number(e.target.value) })}
-                onBlur={() => saveHeaderPatch(selected.order_id, { invoice_total: selected.invoice_total })}
-                disabled={saving}
+                disabled={saving || !editBilling}
               />
               <TextField
                 label="Paid Amount"
@@ -631,8 +725,7 @@ export function OrdersPage() {
                 type="number"
                 value={selected.paid_amount}
                 onChange={(e) => setSelected({ ...selected, paid_amount: Number(e.target.value) })}
-                onBlur={() => saveHeaderPatch(selected.order_id, { paid_amount: selected.paid_amount })}
-                disabled={saving}
+                disabled={saving || !editBilling}
               />
               <Alert severity="info">
                 Baki: <b>{money(selected.baki_amount)}</b> • Balance: <b>{kg(selected.balance_kgs)}</b> • Profit/kg:{" "}
@@ -643,7 +736,7 @@ export function OrdersPage() {
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="subtitle2" fontWeight={800} sx={{ mb: 1 }}>
-              Dispatch (this line item)
+              Dispatch (this line item) + Tally bills
             </Typography>
             {drawerLoading ? (
               <Typography variant="body2" color="text.secondary">
@@ -682,6 +775,15 @@ export function OrdersPage() {
                     Add
                   </Button>
                 </Stack>
+                <TextField
+                  label="Tally bill no(s)"
+                  size="small"
+                  value={tallyBillsInput}
+                  onChange={(e) => setTallyBillsInput(e.target.value)}
+                  placeholder="Comma or new-line separated"
+                  sx={{ mb: 1 }}
+                  fullWidth
+                />
                 {dispatchEntries.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     No dispatch entries yet.
@@ -704,6 +806,9 @@ export function OrdersPage() {
                         <b>{d.dispatch_date}</b>
                         <span>{Math.round(d.dispatch_weight)} kg</span>
                         <span style={{ color: "rgba(15,23,42,0.55)" }}>{d.transport ?? "—"}</span>
+                        <span style={{ color: "rgba(15,23,42,0.55)" }}>
+                          {d.tally_bill_nos && d.tally_bill_nos.length ? d.tally_bill_nos.join(", ") : "—"}
+                        </span>
                       </Box>
                     ))}
                   </Box>
