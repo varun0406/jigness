@@ -44,7 +44,6 @@ export function PurchasePage() {
   const [rate, setRate] = useState<number>(0);
   const [debitNote, setDebitNote] = useState("");
   const [products, setProducts] = useState<MasterProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
 
   const [rows, setRows] = useState<PurchaseLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +64,26 @@ export function PurchasePage() {
   /** Raw material line (same key as sales orders / products master) */
   const [poLine, setPoLine] = useState({ size: "", item: "", grade: "" });
 
+  const itemOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) set.add(p.item);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  const sizeOptions = useMemo(() => {
+    if (!poLine.item.trim()) return [];
+    const set = new Set<string>();
+    for (const p of products) if (p.item === poLine.item) set.add(p.size);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [products, poLine.item]);
+
+  const gradeOptions = useMemo(() => {
+    if (!poLine.item.trim() || !poLine.size.trim()) return [];
+    const set = new Set<string>();
+    for (const p of products) if (p.item === poLine.item && p.size === poLine.size) set.add(p.grade);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [products, poLine.item, poLine.size]);
+
   function productLabel(r: PurchaseLedgerRow) {
     if (r.item && r.size && r.grade) return `${r.item} • ${r.size} • ${r.grade}`;
     return "—";
@@ -83,11 +102,9 @@ export function PurchasePage() {
   }, [loadLedger]);
 
   useEffect(() => {
-    setLoadingProducts(true);
     fetchProducts()
       .then(setProducts)
       .catch(() => setProducts([]))
-      .finally(() => setLoadingProducts(false));
   }, []);
 
   useEffect(() => {
@@ -267,33 +284,46 @@ export function PurchasePage() {
                 />
               </Stack>
 
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                <Autocomplete
-                  options={products}
-                  loading={loadingProducts}
-                  getOptionLabel={(o) => typeof o === "string" ? o : o.item}
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      {option.item} | {option.size} | {option.grade}
-                    </li>
-                  )}
-                  value={null}
-                  inputValue={poLine.item}
-                  onInputChange={(_, v, reason) => {
-                    if (reason !== "reset") setPoLine(prev => ({ ...prev, item: v }));
-                  }}
-                  onChange={(_, v) => {
-                    if (v && typeof v === "object") {
-                      setPoLine({ item: v.item, size: v.size, grade: v.grade });
-                    }
-                  }}
-                  renderInput={(params) => <TextField {...params} label="Item (or select Product)" required />}
-                  freeSolo
-                  fullWidth
-                  sx={{ flex: 2 }}
-                />
-                <TextField label="Size" value={poLine.size} onChange={(e) => setPoLine(prev => ({ ...prev, size: e.target.value }))} fullWidth />
-                <TextField label="Grade" value={poLine.grade} onChange={(e) => setPoLine(prev => ({ ...prev, grade: e.target.value }))} fullWidth />
+              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
+                <Box sx={{ flex: { md: "3 1 240px" }, minWidth: 0 }}>
+                  <Autocomplete
+                    options={itemOptions}
+                    freeSolo
+                    value={poLine.item || null}
+                    inputValue={poLine.item}
+                    onInputChange={(_, v) => {
+                      setPoLine((prev) => ({
+                        ...prev,
+                        item: v,
+                        size: prev.size && sizeOptions.includes(prev.size) ? prev.size : "",
+                        grade: "",
+                      }));
+                    }}
+                    renderInput={(params) => <TextField {...params} label="Item" required />}
+                  />
+                </Box>
+                <Box sx={{ flex: { md: "1.2 1 140px" }, minWidth: 0 }}>
+                  <Autocomplete
+                    options={sizeOptions}
+                    freeSolo
+                    value={poLine.size || null}
+                    inputValue={poLine.size}
+                    onInputChange={(_, v) => {
+                      setPoLine((prev) => ({ ...prev, size: v, grade: "" }));
+                    }}
+                    renderInput={(params) => <TextField {...params} label="Size" />}
+                  />
+                </Box>
+                <Box sx={{ flex: { md: "0 0 140px" }, width: { md: 140 }, maxWidth: { md: 160 } }}>
+                  <Autocomplete
+                    options={gradeOptions}
+                    freeSolo
+                    value={poLine.grade || null}
+                    inputValue={poLine.grade}
+                    onInputChange={(_, v) => setPoLine((prev) => ({ ...prev, grade: v }))}
+                    renderInput={(params) => <TextField {...params} label="Grade" />}
+                  />
+                </Box>
               </Stack>
 
               <Stack direction={{ xs: "column", md: "row" }} spacing={2}>

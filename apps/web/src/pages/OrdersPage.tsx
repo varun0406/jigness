@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -24,12 +25,13 @@ import {
   fetchDispatch,
   fetchOrders,
   fetchPayments,
+  fetchProducts,
   patchOrder,
   patchOrderMeta,
   patchOrderLine,
   deleteOrder,
 } from "../lib/api";
-import type { OrderRow } from "../lib/api";
+import type { MasterProduct, OrderRow } from "../lib/api";
 import type { DispatchEntry, PaymentEntry } from "../lib/api";
 
 function money(n: number) {
@@ -73,6 +75,7 @@ export function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<OrderRow[]>([]);
+  const [products, setProducts] = useState<MasterProduct[]>([]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<OrderRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -101,6 +104,16 @@ export function OrdersPage() {
       alive = false;
     };
   }, [q]);
+
+  useEffect(() => {
+    fetchProducts().then(setProducts).catch(() => setProducts([]));
+  }, []);
+
+  const itemOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) set.add(p.item);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [products]);
 
   useEffect(() => {
     if (!selected) return;
@@ -519,30 +532,42 @@ export function OrdersPage() {
               <Typography variant="subtitle2" fontWeight={800}>
                 Line item (editable)
               </Typography>
-              <TextField
-                label="Item"
-                size="small"
-                value={selected.item}
-                onChange={(e) => setSelected({ ...selected, item: e.target.value })}
-                onBlur={() => saveLinePatch(selected.id, { item: selected.item } as any)}
-                disabled={saving}
+              <Autocomplete
+                options={itemOptions}
+                freeSolo
+                value={selected.item || null}
+                inputValue={selected.item}
+                onInputChange={(_, v) => setSelected({ ...selected, item: v, size: "", grade: "" })}
+                onBlur={() => saveLinePatch(selected.id, { item: selected.item })}
+                renderInput={(params) => <TextField {...params} label="Item" size="small" />}
               />
-              <TextField
-                label="Size"
-                size="small"
-                value={selected.size}
-                onChange={(e) => setSelected({ ...selected, size: e.target.value })}
-                onBlur={() => saveLinePatch(selected.id, { size: selected.size } as any)}
-                disabled={saving}
-              />
-              <TextField
-                label="Grade"
-                size="small"
-                value={selected.grade}
-                onChange={(e) => setSelected({ ...selected, grade: e.target.value })}
-                onBlur={() => saveLinePatch(selected.id, { grade: selected.grade } as any)}
-                disabled={saving}
-              />
+
+              <Stack direction="row" spacing={1}>
+                <Autocomplete
+                  options={[...new Set(products.filter((p) => p.item === selected.item).map((p) => p.size))].sort((a, b) =>
+                    a.localeCompare(b),
+                  )}
+                  freeSolo
+                  value={selected.size || null}
+                  inputValue={selected.size}
+                  onInputChange={(_, v) => setSelected({ ...selected, size: v, grade: "" })}
+                  onBlur={() => saveLinePatch(selected.id, { size: selected.size })}
+                  renderInput={(params) => <TextField {...params} label="Size" size="small" />}
+                  sx={{ flex: 1 }}
+                />
+                <Autocomplete
+                  options={[...new Set(products.filter((p) => p.item === selected.item && p.size === selected.size).map((p) => p.grade))].sort(
+                    (a, b) => a.localeCompare(b),
+                  )}
+                  freeSolo
+                  value={selected.grade || null}
+                  inputValue={selected.grade}
+                  onInputChange={(_, v) => setSelected({ ...selected, grade: v })}
+                  onBlur={() => saveLinePatch(selected.id, { grade: selected.grade })}
+                  renderInput={(params) => <TextField {...params} label="Grade" size="small" />}
+                  sx={{ flex: 1 }}
+                />
+              </Stack>
               <TextField
                 label="Length / Nos"
                 size="small"

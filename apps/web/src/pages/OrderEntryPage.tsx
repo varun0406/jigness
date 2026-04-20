@@ -70,6 +70,12 @@ export function OrderEntryPage() {
 
   const resolvedClientName = useMemo(() => (client ? client.name : clientText.trim()), [client, clientText]);
 
+  const itemOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) set.add(p.item);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) => {
       const next = [...prev];
@@ -201,41 +207,44 @@ export function OrderEntryPage() {
                   </Stack>
 
                   <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
-                    <Box sx={{ flex: { md: "3 1 200px" }, minWidth: 0 }}>
+                    <Box sx={{ flex: { md: "3 1 240px" }, minWidth: 0 }}>
                       <Autocomplete
-                        options={products}
-                        loading={loading}
-                        getOptionLabel={(o) => (typeof o === "string" ? o : o.item)}
-                        renderOption={(props, option) => (
-                          <li {...props}>
-                            {option.item} | {option.size} | {option.grade}
-                          </li>
-                        )}
-                        value={null}
+                        options={itemOptions}
+                        freeSolo
+                        value={line.item || null}
                         inputValue={line.item}
-                        onInputChange={(_, v, reason) => {
-                          if (reason !== "reset") updateLine(index, { item: v });
+                        onInputChange={(_, v) => {
+                          const sizeOptions = products.filter((p) => p.item === v).map((p) => p.size);
+                          updateLine(index, {
+                            item: v,
+                            size: line.size && sizeOptions.includes(line.size) ? line.size : "",
+                            grade: "",
+                          });
                         }}
                         onChange={(_, v) => {
-                          if (v && typeof v === "object") {
-                            updateLine(index, { item: v.item, size: v.size, grade: v.grade });
-                          }
+                          if (typeof v === "string") return;
                         }}
-                        renderInput={(params) => <TextField {...params} label="Item (or select product)" required />}
-                        freeSolo
-                        fullWidth
+                        renderInput={(params) => <TextField {...params} label="Item" required />}
                       />
                     </Box>
-                    <Box sx={{ flex: { md: "1.2 1 120px" }, minWidth: 0 }}>
-                      <TextField label="Size" value={line.size} onChange={(e) => updateLine(index, { size: e.target.value })} fullWidth />
+                    <Box sx={{ flex: { md: "1.2 1 140px" }, minWidth: 0 }}>
+                      <Autocomplete
+                        options={[...new Set(products.filter((p) => p.item === line.item).map((p) => p.size))].sort((a, b) => a.localeCompare(b))}
+                        freeSolo
+                        value={line.size || null}
+                        inputValue={line.size}
+                        onInputChange={(_, v) => updateLine(index, { size: v, grade: "" })}
+                        renderInput={(params) => <TextField {...params} label="Size" />}
+                      />
                     </Box>
-                    <Box sx={{ flex: { md: "0 0 100px" }, width: { md: 100 }, maxWidth: { md: 120 } }}>
-                      <TextField
-                        label="Grade"
-                        value={line.grade}
-                        onChange={(e) => updateLine(index, { grade: e.target.value })}
-                        fullWidth
-                        InputProps={{ sx: { "& input": { fontSize: 14 } } }}
+                    <Box sx={{ flex: { md: "0 0 140px" }, width: { md: 140 }, maxWidth: { md: 160 } }}>
+                      <Autocomplete
+                        options={[...new Set(products.filter((p) => p.item === line.item && p.size === line.size).map((p) => p.grade))].sort((a, b) => a.localeCompare(b))}
+                        freeSolo
+                        value={line.grade || null}
+                        inputValue={line.grade}
+                        onInputChange={(_, v) => updateLine(index, { grade: v })}
+                        renderInput={(params) => <TextField {...params} label="Grade" />}
                       />
                     </Box>
                   </Stack>
