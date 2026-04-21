@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
 import {
   createPurchase,
@@ -40,9 +41,6 @@ export function PurchasePage() {
   const [supplier, setSupplier] = useState("");
   const [poNo, setPoNo] = useState("");
   const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
-  const [weight, setWeight] = useState<number>(0);
-  const [rate, setRate] = useState<number>(0);
-  const [debitNote, setDebitNote] = useState("");
   const [products, setProducts] = useState<MasterProduct[]>([]);
 
   const [rows, setRows] = useState<PurchaseLedgerRow[]>([]);
@@ -59,30 +57,32 @@ export function PurchasePage() {
   const [receiptLines, setReceiptLines] = useState<PurchaseReceiptRow[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
 
-  const amountOrderedPreview = useMemo(() => weight * rate, [weight, rate]);
+  type PoLineDraft = {
+    item: string;
+    size: string;
+    grade: string;
+    weight: number;
+    rate: number;
+    debit_note: string;
+  };
 
-  /** Raw material line (same key as sales orders / products master) */
-  const [poLine, setPoLine] = useState({ size: "", item: "", grade: "" });
+  const emptyPoLine = (): PoLineDraft => ({
+    item: "",
+    size: "",
+    grade: "",
+    weight: 0,
+    rate: 0,
+    debit_note: "",
+  });
+
+  /** A single PO can contain many raw-material lines. */
+  const [poLines, setPoLines] = useState<PoLineDraft[]>([emptyPoLine()]);
 
   const itemOptions = useMemo(() => {
     const set = new Set<string>();
     for (const p of products) set.add(p.item);
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [products]);
-
-  const sizeOptions = useMemo(() => {
-    if (!poLine.item.trim()) return [];
-    const set = new Set<string>();
-    for (const p of products) if (p.item === poLine.item) set.add(p.size);
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [products, poLine.item]);
-
-  const gradeOptions = useMemo(() => {
-    if (!poLine.item.trim() || !poLine.size.trim()) return [];
-    const set = new Set<string>();
-    for (const p of products) if (p.item === poLine.item && p.size === poLine.size) set.add(p.grade);
-    return [...set].sort((a, b) => a.localeCompare(b));
-  }, [products, poLine.item, poLine.size]);
 
   function productLabel(r: PurchaseLedgerRow) {
     if (r.item && r.size && r.grade) return `${r.item} • ${r.size} • ${r.grade}`;
@@ -116,31 +116,47 @@ export function PurchasePage() {
   }, [drawerPo?.id]);
 
   async function submitPo() {
-    if (!poLine.item.trim()) {
-      setErr("Select or enter raw material.");
+    if (!supplier.trim()) {
+      setErr("Enter supplier name.");
+      return;
+    }
+    const clean = poLines
+      .map((l) => ({
+        item: l.item.trim(),
+        size: l.size.trim() || "-",
+        grade: l.grade.trim() || "-",
+        weight: Number(l.weight) || 0,
+        rate: Number(l.rate) || 0,
+        debit_note: l.debit_note.trim(),
+      }))
+      .filter((l) => l.item && l.weight > 0);
+
+    if (clean.length === 0) {
+      setErr("Add at least one raw-material line with Item and WEIGHT > 0.");
       return;
     }
     setSaving(true);
     setErr(null);
     try {
-      const created = await createPurchase({
-        supplier_name: supplier.trim(),
-        po_no: poNo.trim() || undefined,
-        purchase_date: date,
-        weight,
-        rate,
-        debit_note: debitNote.trim() || undefined,
-        size: poLine.size.trim() || "-",
-        item: poLine.item.trim(),
-        grade: poLine.grade.trim() || "-",
-      });
-      setRows((prev) => [created, ...prev]);
+      const created = await Promise.all(
+        clean.map((l) =>
+          createPurchase({
+            supplier_name: supplier.trim(),
+            po_no: poNo.trim() || undefined,
+            purchase_date: date,
+            weight: l.weight,
+            rate: l.rate,
+            debit_note: l.debit_note || undefined,
+            size: l.size,
+            item: l.item,
+            grade: l.grade,
+          }),
+        ),
+      );
+      setRows((prev) => [...created, ...prev]);
       setSupplier("");
       setPoNo("");
-      setWeight(0);
-      setRate(0);
-      setDebitNote("");
-      setPoLine({ size: "", item: "", grade: "" });
+      setPoLines([emptyPoLine()]);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -284,82 +300,141 @@ export function PurchasePage() {
                 />
               </Stack>
 
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
-                <Box sx={{ flex: { md: "3 1 240px" }, minWidth: 0 }}>
-                  <Autocomplete
-                    options={itemOptions}
-                    freeSolo
-                    value={poLine.item || null}
-                    inputValue={poLine.item}
-                    onInputChange={(_, v) => {
-                      setPoLine((prev) => ({
-                        ...prev,
-                        item: v,
-                        size: prev.size && sizeOptions.includes(prev.size) ? prev.size : "",
-                        grade: "",
-                      }));
-                    }}
-                    renderInput={(params) => <TextField {...params} label="Item" required />}
-                  />
-                </Box>
-                <Box sx={{ flex: { md: "1.2 1 140px" }, minWidth: 0 }}>
-                  <Autocomplete
-                    options={sizeOptions}
-                    freeSolo
-                    value={poLine.size || null}
-                    inputValue={poLine.size}
-                    onInputChange={(_, v) => {
-                      setPoLine((prev) => ({ ...prev, size: v, grade: "" }));
-                    }}
-                    renderInput={(params) => <TextField {...params} label="Size" />}
-                  />
-                </Box>
-                <Box sx={{ flex: { md: "0 0 140px" }, width: { md: 140 }, maxWidth: { md: 160 } }}>
-                  <Autocomplete
-                    options={gradeOptions}
-                    freeSolo
-                    value={poLine.grade || null}
-                    inputValue={poLine.grade}
-                    onInputChange={(_, v) => setPoLine((prev) => ({ ...prev, grade: v }))}
-                    renderInput={(params) => <TextField {...params} label="Grade" />}
-                  />
-                </Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography fontWeight={800}>Raw material lines</Typography>
+                <Button startIcon={<AddIcon />} size="small" onClick={() => setPoLines((p) => [...p, emptyPoLine()])}>
+                  Add item
+                </Button>
               </Stack>
 
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                <TextField
-                  label="WEIGHT (ordered, kg)"
-                  type="number"
-                  value={weight}
-                  onChange={(e) => setWeight(Number(e.target.value))}
-                  fullWidth
-                />
-                <TextField label="RATE" type="number" value={rate} onChange={(e) => setRate(Number(e.target.value))} fullWidth />
-                <TextField
-                  label="AMOUNT (order = wt × rate)"
-                  value={money(amountOrderedPreview)}
-                  disabled
-                  fullWidth
-                />
-              </Stack>
+              {poLines.map((line, idx) => {
+                const sizeOptions = [...new Set(products.filter((p) => p.item === line.item).map((p) => p.size))].sort((a, b) =>
+                  a.localeCompare(b),
+                );
+                const gradeOptions = [
+                  ...new Set(products.filter((p) => p.item === line.item && p.size === line.size).map((p) => p.grade)),
+                ].sort((a, b) => a.localeCompare(b));
+                const amountPreview = (Number(line.weight) || 0) * (Number(line.rate) || 0);
+                return (
+                  <Box key={idx} sx={{ border: "1px solid rgba(15,23,42,0.10)", borderRadius: 2, p: 2 }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography fontWeight={800}>Item {idx + 1}</Typography>
+                        {poLines.length > 1 ? (
+                          <IconButton size="small" color="error" onClick={() => setPoLines((p) => p.filter((_, i) => i !== idx))}>
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        ) : null}
+                      </Stack>
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
+                        <Box sx={{ flex: { md: "3 1 240px" }, minWidth: 0 }}>
+                          <Autocomplete
+                            options={itemOptions}
+                            freeSolo
+                            value={line.item || null}
+                            inputValue={line.item}
+                            onInputChange={(_, v) => {
+                              setPoLines((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], item: v, size: "", grade: "" };
+                                return next;
+                              });
+                            }}
+                            renderInput={(params) => <TextField {...params} label="Item" required />}
+                          />
+                        </Box>
+                        <Box sx={{ flex: { md: "1.2 1 140px" }, minWidth: 0 }}>
+                          <Autocomplete
+                            options={sizeOptions}
+                            freeSolo
+                            value={line.size || null}
+                            inputValue={line.size}
+                            onInputChange={(_, v) => {
+                              setPoLines((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], size: v, grade: "" };
+                                return next;
+                              });
+                            }}
+                            renderInput={(params) => <TextField {...params} label="Size" />}
+                          />
+                        </Box>
+                        <Box sx={{ flex: { md: "0 0 140px" }, width: { md: 140 }, maxWidth: { md: 160 } }}>
+                          <Autocomplete
+                            options={gradeOptions}
+                            freeSolo
+                            value={line.grade || null}
+                            inputValue={line.grade}
+                            onInputChange={(_, v) => {
+                              setPoLines((prev) => {
+                                const next = [...prev];
+                                next[idx] = { ...next[idx], grade: v };
+                                return next;
+                              });
+                            }}
+                            renderInput={(params) => <TextField {...params} label="Grade" />}
+                          />
+                        </Box>
+                      </Stack>
 
-              <TextField
-                label="DEBIT NOTE (optional)"
-                value={debitNote}
-                onChange={(e) => setDebitNote(e.target.value)}
-                fullWidth
-                multiline
-                minRows={2}
-              />
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                        <TextField
+                          label="WEIGHT (ordered, kg)"
+                          type="number"
+                          value={line.weight}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setPoLines((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], weight: v };
+                              return next;
+                            });
+                          }}
+                          fullWidth
+                        />
+                        <TextField
+                          label="RATE"
+                          type="number"
+                          value={line.rate}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setPoLines((prev) => {
+                              const next = [...prev];
+                              next[idx] = { ...next[idx], rate: v };
+                              return next;
+                            });
+                          }}
+                          fullWidth
+                        />
+                        <TextField label="AMOUNT (wt × rate)" value={money(amountPreview)} disabled fullWidth />
+                      </Stack>
+
+                      <TextField
+                        label="DEBIT NOTE (optional)"
+                        value={line.debit_note}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPoLines((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], debit_note: v };
+                            return next;
+                          });
+                        }}
+                        fullWidth
+                        multiline
+                        minRows={2}
+                      />
+                    </Stack>
+                  </Box>
+                );
+              })}
 
               <Box>
                 <Button
                   variant="contained"
                   disabled={
                     saving ||
-                    !supplier.trim() ||
-                    weight <= 0 ||
-                    !poLine.item.trim()
+                    !supplier.trim()
                   }
                   onClick={submitPo}
                 >

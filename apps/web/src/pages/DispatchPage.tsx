@@ -12,9 +12,8 @@ import {
   Typography,
 } from "@mui/material";
 import dayjs from "dayjs";
-import { createDispatch, fetchDispatch, fetchOrders } from "../lib/api";
+import { createDispatchForLine, fetchDispatchForLine, fetchOrders } from "../lib/api";
 import type { DispatchEntry, OrderRow } from "../lib/api";
-
 
 export function DispatchPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -31,8 +30,6 @@ export function DispatchPage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-
-
   useEffect(() => {
     setLoadingOrders(true);
     fetchOrders()
@@ -44,7 +41,7 @@ export function DispatchPage() {
   useEffect(() => {
     if (!order) return;
     setLoadingEntries(true);
-    fetchDispatch(order.id)
+    fetchDispatchForLine(order.id)
       .then(setEntries)
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : "Failed to load dispatch entries"))
       .finally(() => setLoadingEntries(false));
@@ -52,15 +49,18 @@ export function DispatchPage() {
 
   const helper = useMemo(() => {
     if (!order) return null;
-    return `Balance: ${Math.round(order.balance_kgs)} kg • Dispatched: ${Math.round(order.dispatch_weight)} kg`;
-  }, [order]);
+    const dispatched = entries.reduce((s, e) => s + (Number(e.dispatch_weight) || 0), 0);
+    const bal = Math.max(0, Number(order.order_kgs) - dispatched);
+    const maxAllowed = Number(order.order_kgs) + 300;
+    return `Line ordered: ${Math.round(order.order_kgs)} kg • Dispatched (this line): ${Math.round(dispatched)} kg • Balance: ${Math.round(bal)} kg • Max allowed: ${Math.round(maxAllowed)} kg`;
+  }, [order, entries]);
 
   async function submit() {
     if (!order) return;
     setSaving(true);
     setErr(null);
     try {
-      const updated = await createDispatch(order.id, {
+      const updated = await createDispatchForLine(order.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
         transport: transport.trim() || undefined,
@@ -70,7 +70,7 @@ export function DispatchPage() {
           .filter(Boolean),
       });
       setOrder(updated.find(u => u.id === order.id) ?? updated[0] ?? order);
-      const list = await fetchDispatch(order.id);
+      const list = await fetchDispatchForLine(order.id);
       setEntries(list);
       setDispatchWeight(0);
       setTransport("");
@@ -103,7 +103,7 @@ export function DispatchPage() {
               loading={loadingOrders}
               value={order}
               onChange={(_, v) => setOrder(v)}
-              getOptionLabel={(o) => `${o.item} ${o.size} ${o.grade} (${o.balance_kgs} kg pending)`}
+              getOptionLabel={(o) => `${o.item} ${o.size} ${o.grade} (${Math.round(o.order_kgs)} kg ordered)`}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -190,6 +190,9 @@ export function DispatchPage() {
                   <Typography fontWeight={700}>{e.dispatch_date}</Typography>
                   <Typography>{Math.round(e.dispatch_weight)} kg</Typography>
                   <Typography color="text.secondary">{e.transport ?? "—"}</Typography>
+                  <Typography color="text.secondary" sx={{ textAlign: "right" }}>
+                    {e.tally_bill_nos && e.tally_bill_nos.length ? e.tally_bill_nos.join(", ") : "—"}
+                  </Typography>
                 </Box>
               ))}
             </Box>
