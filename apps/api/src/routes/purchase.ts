@@ -21,6 +21,24 @@ const CreatePurchaseBody = z.object({
   grade: z.string().trim().min(1),
 });
 
+const CreatePurchaseBatchBody = z.object({
+  supplier_name: z.string().trim().min(1),
+  po_no: z.string().trim().optional(),
+  purchase_date: z.string().min(10),
+  lines: z
+    .array(
+      z.object({
+        weight: z.coerce.number().positive(),
+        rate: z.coerce.number().min(0),
+        debit_note: z.string().trim().optional(),
+        size: z.string().trim().min(1),
+        item: z.string().trim().min(1),
+        grade: z.string().trim().min(1),
+      }),
+    )
+    .min(1),
+});
+
 function resolveProductId(db: Db, size: string, item: string, grade: string) {
   const existing = db
     .prepare(`SELECT id FROM products WHERE size = ? AND item = ? AND grade = ?`)
@@ -170,6 +188,40 @@ LIMIT 500
 
     const id = Number(info.lastInsertRowid);
     return { data: ledgerRow(db, id) };
+  });
+
+  /** Create many PO lines atomically under same header (robust against partial failures). */
+  app.post("/purchase/batch", async (req, reply) => {
+    const body = CreatePurchaseBatchBody.parse(req.body);
+
+    try {
+      const created = db.transaction(() => {
+        const supplierId = resolveSupplierId(db, body.supplier_name);
+        const ins = db.prepare(
+          `INSERT INTO purchase_entries(supplier_id, product_id, po_no, purchase_date, weight, rate, received_weight, debit_note)
+           VALUES (?,?,?,?,?,?,0,?)`,
+        );
+        const ids: number[] = [];
+        for (const l of body.lines) {
+          const productId = resolveProductId(db, l.size, l.item, l.grade);
+          const info = ins.run(
+            supplierId,
+            productId,
+            body.po_no ?? null,
+            body.purchase_date,
+            l.weight,
+            l.rate,
+            l.debit_note ?? null,
+          );
+          ids.push(Number(info.lastInsertRowid));
+        }
+        return ids.map((id) => ledgerRow(db, id));
+      })();
+
+      return { data: created };
+    } catch (e: unknown) {
+      return reply.code(400).send({ error: e instanceof Error ? e.message : "Failed to create PO" });
+    }
   });
 
   app.post("/purchase/:id/receipt", async (req, reply) => {

@@ -306,6 +306,23 @@ export async function createPurchase(body: {
   return res.data.data;
 }
 
+export async function createPurchaseBatch(body: {
+  supplier_name: string;
+  po_no?: string;
+  purchase_date: string;
+  lines: Array<{
+    weight: number;
+    rate: number;
+    debit_note?: string;
+    size: string;
+    item: string;
+    grade: string;
+  }>;
+}) {
+  const res = await api.post<{ data: PurchaseLedgerRow[] }>("/purchase/batch", body);
+  return res.data.data;
+}
+
 export async function fetchPurchaseLedger() {
   const res = await api.get<{ data: PurchaseLedgerRow[] }>("/purchase-ledger");
   return res.data.data;

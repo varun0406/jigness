@@ -20,7 +20,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
 import {
-  createPurchase,
+  createPurchaseBatch,
   createPurchaseReceipt,
   deletePurchase,
   deletePurchaseReceipt,
@@ -138,21 +138,19 @@ export function PurchasePage() {
     setSaving(true);
     setErr(null);
     try {
-      const created = await Promise.all(
-        clean.map((l) =>
-          createPurchase({
-            supplier_name: supplier.trim(),
-            po_no: poNo.trim() || undefined,
-            purchase_date: date,
-            weight: l.weight,
-            rate: l.rate,
-            debit_note: l.debit_note || undefined,
-            size: l.size,
-            item: l.item,
-            grade: l.grade,
-          }),
-        ),
-      );
+      const created = await createPurchaseBatch({
+        supplier_name: supplier.trim(),
+        po_no: poNo.trim() || undefined,
+        purchase_date: date,
+        lines: clean.map((l) => ({
+          weight: l.weight,
+          rate: l.rate,
+          debit_note: l.debit_note || undefined,
+          size: l.size,
+          item: l.item,
+          grade: l.grade,
+        })),
+      });
       setRows((prev) => [...created, ...prev]);
       setSupplier("");
       setPoNo("");
