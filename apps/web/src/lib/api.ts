@@ -81,8 +81,11 @@ export type OrderRow = {
   grade: string;
   length_nos: string | null;
   order_kgs: number;
+  order_pcs: number;
   dispatch_weight: number;
+  dispatch_pcs: number;
   balance_kgs: number;
+  balance_pcs: number;
   avg_cost: number;
   bill_rate: number;
   profit_per_kg: number;
@@ -113,6 +116,7 @@ export type CreateOrderLine = {
   grade: string;
   length_nos?: string;
   order_kgs: number;
+  order_pcs?: number;
   bill_rate: number;
 };
 
@@ -144,7 +148,7 @@ export async function patchOrderMeta(
 
 export async function patchOrderLine(
   lineId: number,
-  body: Partial<Pick<OrderRow, "size" | "item" | "grade" | "length_nos" | "order_kgs" | "bill_rate" | "avg_cost">>,
+  body: Partial<Pick<OrderRow, "size" | "item" | "grade" | "length_nos" | "order_kgs" | "order_pcs" | "bill_rate" | "avg_cost">>,
 ) {
   const res = await api.patch<{ data: OrderRow }>(`/order-lines/${lineId}`, body);
   return res.data.data;
@@ -226,6 +230,8 @@ export type DispatchEntry = {
   id: number;
   dispatch_date: string;
   dispatch_weight: number;
+  dispatch_pcs: number;
+  bundle_no: string | null;
   transport: string | null;
   tally_bill_nos?: string[];
   created_at: string;
@@ -233,7 +239,14 @@ export type DispatchEntry = {
 
 export async function createDispatch(
   orderId: number,
-  body: { dispatch_date: string; dispatch_weight: number; transport?: string; tally_bill_nos?: string[] },
+  body: {
+    dispatch_date: string;
+    dispatch_weight: number;
+    dispatch_pcs?: number;
+    bundle_no?: string;
+    transport?: string;
+    tally_bill_nos?: string[];
+  },
 ) {
   const res = await api.post<{ data: OrderRow[] }>(`/orders/${orderId}/dispatch`, body);
   return res.data.data;
@@ -252,7 +265,14 @@ export async function fetchDispatchForLine(lineId: number) {
 
 export async function createDispatchForLine(
   lineId: number,
-  body: { dispatch_date: string; dispatch_weight: number; transport?: string; tally_bill_nos?: string[] },
+  body: {
+    dispatch_date: string;
+    dispatch_weight: number;
+    dispatch_pcs?: number;
+    bundle_no?: string;
+    transport?: string;
+    tally_bill_nos?: string[];
+  },
 ) {
   const res = await api.post<{ data: OrderRow[] }>(`/order-lines/${lineId}/dispatch`, body);
   return res.data.data;
@@ -263,7 +283,10 @@ export async function addDispatchTallyBill(dispatchId: number, bill_no: string) 
   return res.data.data;
 }
 
-export async function patchDispatch(dispatchId: number, body: Partial<Pick<DispatchEntry, "dispatch_date" | "dispatch_weight" | "transport">>) {
+export async function patchDispatch(
+  dispatchId: number,
+  body: Partial<Pick<DispatchEntry, "dispatch_date" | "dispatch_weight" | "dispatch_pcs" | "bundle_no" | "transport">>,
+) {
   const res = await api.patch<{ data: OrderRow[] }>(`/dispatch/${dispatchId}`, body);
   return res.data.data;
 }

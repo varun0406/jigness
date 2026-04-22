@@ -42,6 +42,10 @@ function kg(n: number) {
   return `${Math.round(n).toLocaleString()} kg`;
 }
 
+function pcs(n: number) {
+  return `${Math.round(Number(n) || 0).toLocaleString()} pcs`;
+}
+
 function sum(nums: number[]) {
   return nums.reduce((a, b) => a + b, 0);
 }
@@ -84,6 +88,8 @@ export function OrdersPage() {
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [dispatchDate, setDispatchDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [dispatchWeight, setDispatchWeight] = useState<number>(0);
+  const [dispatchPcs, setDispatchPcs] = useState<number>(0);
+  const [bundleNo, setBundleNo] = useState("");
   const [transport, setTransport] = useState("");
   const [tallyBillsInput, setTallyBillsInput] = useState("");
   const [paymentDate, setPaymentDate] = useState(dayjs().format("YYYY-MM-DD"));
@@ -140,9 +146,12 @@ export function OrdersPage() {
     const lineCount = rows.length;
     const orderCount = new Set(rows.map((r) => r.order_id)).size;
     const orderKgs = sum(rows.map((r) => r.order_kgs));
+    const orderPcs = sum(rows.map((r) => r.order_pcs || 0));
     const pending = sum(rows.map((r) => Math.max(0, r.balance_kgs)));
     const dispatchKgs = sum(rows.map((r) => r.dispatch_weight));
+    const dispatchPcsSum = sum(rows.map((r) => r.dispatch_pcs || 0));
     const balanceKgs = sum(rows.map((r) => Math.max(0, r.balance_kgs)));
+    const balancePcs = sum(rows.map((r) => Math.max(0, r.balance_pcs || 0)));
     const invoiceTotal = sumOncePerOrder(rows, (r) => r.invoice_total);
     const paidTotal = sumOncePerOrder(rows, (r) => r.paid_amount);
     const bakiTotal = sumOncePerOrder(rows, (r) => r.baki_amount);
@@ -153,8 +162,11 @@ export function OrdersPage() {
       orderCount,
       pending,
       orderKgs,
+      orderPcs,
       dispatchKgs,
+      dispatchPcsSum,
       balanceKgs,
+      balancePcs,
       invoiceTotal,
       paidTotal,
       bakiTotal,
@@ -210,6 +222,8 @@ export function OrdersPage() {
       const updated = await createDispatchForLine(selected.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
+        dispatch_pcs: dispatchPcs,
+        bundle_no: bundleNo.trim() || undefined,
         transport: transport.trim() || undefined,
         tally_bill_nos: tallyBillsInput
           .split(/[\n,]+/g)
@@ -224,6 +238,8 @@ export function OrdersPage() {
         return u ?? updated[0] ?? prev;
       });
       setDispatchWeight(0);
+      setDispatchPcs(0);
+      setBundleNo("");
       setTransport("");
       setTallyBillsInput("");
     } finally {
@@ -302,11 +318,18 @@ export function OrdersPage() {
       >
         <SummaryChip label="Work orders" value={header.orderCount.toLocaleString()} />
         <SummaryChip label="Order Kgs" value={kg(header.orderKgs)} />
+        <SummaryChip label="Order Pcs" value={pcs(header.orderPcs)} />
         <SummaryChip label="Dispatch" value={kg(header.dispatchKgs)} />
+        <SummaryChip label="Dispatch Pcs" value={pcs(header.dispatchPcsSum)} />
         <SummaryChip
           label="Balance (kg)"
           value={kg(header.balanceKgs)}
           tone={header.balanceKgs > 0.0001 ? "warning" : "neutral"}
+        />
+        <SummaryChip
+          label="Balance (pcs)"
+          value={pcs(header.balancePcs)}
+          tone={header.balancePcs > 0.0001 ? "warning" : "neutral"}
         />
         <SummaryChip label="Invoice total" value={money(header.invoiceTotal)} />
         <SummaryChip label="Paid" value={money(header.paidTotal)} />
@@ -345,8 +368,8 @@ export function OrdersPage() {
             sx={{
               display: "grid",
               gridTemplateColumns:
-                "120px 120px 220px 140px 160px 90px 110px 110px 110px 100px 100px 110px 100px 110px 110px",
-              minWidth: 1800,
+                "120px 120px 220px 140px 160px 90px 110px 90px 110px 90px 110px 100px 100px 110px 100px 110px 110px",
+              minWidth: 1980,
               gap: 0,
               borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
               position: "sticky",
@@ -362,8 +385,11 @@ export function OrdersPage() {
               "SIZE",
               "Grade",
               "Order Kgs",
+              "Order Pcs",
               "Dispatch",
+              "Dispatch Pcs",
               "Balance",
+              "Balance Pcs",
               "AVE",
               "BILL RATE",
               "Bill No",
@@ -379,7 +405,7 @@ export function OrdersPage() {
 
           {rows.map((r) => {
             const loss = r.profit_per_kg < 0;
-            const pending = r.balance_kgs > 0.0001;
+            const pending = r.balance_kgs > 0.0001 || (r.balance_pcs || 0) > 0;
             return (
               <Box
                 key={r.id}
@@ -387,8 +413,8 @@ export function OrdersPage() {
                 sx={{
                   display: "grid",
                   gridTemplateColumns:
-                    "120px 120px 220px 140px 160px 90px 110px 110px 110px 100px 100px 110px 100px 110px 110px",
-                  minWidth: 1800,
+                    "120px 120px 220px 140px 160px 90px 110px 90px 110px 90px 110px 100px 100px 110px 100px 110px 110px",
+                  minWidth: 1980,
                   borderBottom: "1px solid rgba(15, 23, 42, 0.06)",
                   cursor: "pointer",
                   "&:hover": { background: "rgba(37, 99, 235, 0.04)" },
@@ -404,8 +430,11 @@ export function OrdersPage() {
                 </Cell>
                 <Cell>{r.grade}</Cell>
                 <Cell>{kg(r.order_kgs)}</Cell>
+                <Cell>{pcs(r.order_pcs)}</Cell>
                 <Cell>{kg(r.dispatch_weight)}</Cell>
+                <Cell>{pcs(r.dispatch_pcs)}</Cell>
                 <Cell highlight={pending ? "warning" : undefined}>{kg(r.balance_kgs)}</Cell>
+                <Cell highlight={pending ? "warning" : undefined}>{pcs(r.balance_pcs)}</Cell>
                 <Cell>{money(r.avg_cost)}</Cell>
                 <Cell>{money(r.bill_rate)}</Cell>
                 <Cell>{r.invoice_no ?? "—"}</Cell>
@@ -426,8 +455,8 @@ export function OrdersPage() {
             sx={{
               display: "grid",
               gridTemplateColumns:
-                "120px 120px 220px 140px 160px 90px 110px 110px 110px 100px 100px 110px 100px 110px 110px",
-              minWidth: 1800,
+                "120px 120px 220px 140px 160px 90px 110px 90px 110px 90px 110px 100px 100px 110px 100px 110px 110px",
+              minWidth: 1980,
               borderTop: "2px solid rgba(15, 23, 42, 0.12)",
               background: "rgba(15, 23, 42, 0.02)",
               position: "sticky",
@@ -442,9 +471,14 @@ export function OrdersPage() {
             <Cell>{" "}</Cell>
             <Cell>{" "}</Cell>
             <Cell strong>{kg(header.orderKgs)}</Cell>
+            <Cell strong>{pcs(header.orderPcs)}</Cell>
             <Cell strong>{kg(header.dispatchKgs)}</Cell>
+            <Cell strong>{pcs(header.dispatchPcsSum)}</Cell>
             <Cell strong highlight={header.balanceKgs > 0.0001 ? "warning" : undefined}>
               {kg(header.balanceKgs)}
+            </Cell>
+            <Cell strong highlight={header.balancePcs > 0.0001 ? "warning" : undefined}>
+              {pcs(header.balancePcs)}
             </Cell>
             <Cell>{" "}</Cell>
             <Cell>{" "}</Cell>
@@ -584,6 +618,7 @@ export function OrdersPage() {
                             grade: selected.grade,
                             length_nos: selected.length_nos,
                             order_kgs: selected.order_kgs,
+                            order_pcs: selected.order_pcs,
                           });
                           setEditLine(false);
                         }}
@@ -650,6 +685,14 @@ export function OrdersPage() {
                 type="number"
                 value={selected.order_kgs}
                 onChange={(e) => setSelected({ ...selected, order_kgs: Number(e.target.value) })}
+                disabled={saving || !editLine}
+              />
+              <TextField
+                label="Order pieces"
+                size="small"
+                type="number"
+                value={selected.order_pcs}
+                onChange={(e) => setSelected({ ...selected, order_pcs: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
                 disabled={saving || !editLine}
               />
 
@@ -728,8 +771,8 @@ export function OrdersPage() {
                 disabled={saving || !editBilling}
               />
               <Alert severity="info">
-                Baki: <b>{money(selected.baki_amount)}</b> • Balance: <b>{kg(selected.balance_kgs)}</b> • Profit/kg:{" "}
-                <b>{money(selected.profit_per_kg)}</b>
+                Baki: <b>{money(selected.baki_amount)}</b> • Balance: <b>{kg(selected.balance_kgs)}</b> / <b>{pcs(selected.balance_pcs)}</b> •
+                Profit/kg: <b>{money(selected.profit_per_kg)}</b>
               </Alert>
             </Stack>
 
@@ -760,6 +803,23 @@ export function OrdersPage() {
                     type="number"
                     value={dispatchWeight}
                     onChange={(e) => setDispatchWeight(Number(e.target.value))}
+                    sx={{ flex: 1 }}
+                  />
+                </Stack>
+                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                  <TextField
+                    label="Pieces"
+                    size="small"
+                    type="number"
+                    value={dispatchPcs}
+                    onChange={(e) => setDispatchPcs(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    label="Bundle"
+                    size="small"
+                    value={bundleNo}
+                    onChange={(e) => setBundleNo(e.target.value)}
                     sx={{ flex: 1 }}
                   />
                 </Stack>
@@ -804,7 +864,10 @@ export function OrdersPage() {
                         }}
                       >
                         <b>{d.dispatch_date}</b>
-                        <span>{Math.round(d.dispatch_weight)} kg</span>
+                        <span>
+                          {Math.round(d.dispatch_weight)} kg / {Math.round(d.dispatch_pcs || 0)} pcs
+                        </span>
+                        <span style={{ color: "rgba(15,23,42,0.55)" }}>{d.bundle_no ?? "—"}</span>
                         <span style={{ color: "rgba(15,23,42,0.55)" }}>{d.transport ?? "—"}</span>
                         <span style={{ color: "rgba(15,23,42,0.55)" }}>
                           {d.tally_bill_nos && d.tally_bill_nos.length ? d.tally_bill_nos.join(", ") : "—"}

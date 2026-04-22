@@ -22,6 +22,8 @@ export function DispatchPage() {
 
   const [dispatchDate, setDispatchDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [dispatchWeight, setDispatchWeight] = useState<number>(0);
+  const [dispatchPcs, setDispatchPcs] = useState<number>(0);
+  const [bundleNo, setBundleNo] = useState("");
   const [transport, setTransport] = useState("");
   const [tallyBillsInput, setTallyBillsInput] = useState("");
 
@@ -52,7 +54,9 @@ export function DispatchPage() {
     const dispatched = entries.reduce((s, e) => s + (Number(e.dispatch_weight) || 0), 0);
     const bal = Math.max(0, Number(order.order_kgs) - dispatched);
     const maxAllowed = Number(order.order_kgs) + 300;
-    return `Line ordered: ${Math.round(order.order_kgs)} kg • Dispatched (this line): ${Math.round(dispatched)} kg • Balance: ${Math.round(bal)} kg • Max allowed: ${Math.round(maxAllowed)} kg`;
+    const dispatchedPcsSum = entries.reduce((s, e) => s + (Number(e.dispatch_pcs) || 0), 0);
+    const balPcs = Math.max(0, Number(order.order_pcs || 0) - dispatchedPcsSum);
+    return `Line ordered: ${Math.round(order.order_kgs)} kg / ${Math.round(order.order_pcs || 0)} pcs • Dispatched (this line): ${Math.round(dispatched)} kg / ${Math.round(dispatchedPcsSum)} pcs • Balance: ${Math.round(bal)} kg / ${Math.round(balPcs)} pcs • Max allowed: ${Math.round(maxAllowed)} kg`;
   }, [order, entries]);
 
   async function submit() {
@@ -63,6 +67,8 @@ export function DispatchPage() {
       const updated = await createDispatchForLine(order.id, {
         dispatch_date: dispatchDate,
         dispatch_weight: dispatchWeight,
+        dispatch_pcs: dispatchPcs,
+        bundle_no: bundleNo.trim() || undefined,
         transport: transport.trim() || undefined,
         tally_bill_nos: tallyBillsInput
           .split(/[\n,]+/g)
@@ -73,6 +79,8 @@ export function DispatchPage() {
       const list = await fetchDispatchForLine(order.id);
       setEntries(list);
       setDispatchWeight(0);
+      setDispatchPcs(0);
+      setBundleNo("");
       setTransport("");
       setTallyBillsInput("");
     } catch (e: unknown) {
@@ -103,7 +111,9 @@ export function DispatchPage() {
               loading={loadingOrders}
               value={order}
               onChange={(_, v) => setOrder(v)}
-              getOptionLabel={(o) => `${o.item} ${o.size} ${o.grade} (${Math.round(o.order_kgs)} kg ordered)`}
+              getOptionLabel={(o) =>
+                `${o.item} ${o.size} ${o.grade} (${Math.round(o.order_kgs)} kg / ${Math.round(o.order_pcs || 0)} pcs ordered)`
+              }
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -140,12 +150,27 @@ export function DispatchPage() {
                 fullWidth
               />
               <TextField
+                label="Dispatch pieces"
+                type="number"
+                value={dispatchPcs}
+                onChange={(e) => setDispatchPcs(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                fullWidth
+              />
+              <TextField
                 label="Transport"
                 value={transport}
                 onChange={(e) => setTransport(e.target.value)}
                 fullWidth
               />
             </Stack>
+
+            <TextField
+              label="Bundle"
+              value={bundleNo}
+              onChange={(e) => setBundleNo(e.target.value)}
+              placeholder="Optional bundle / lot identifier"
+              fullWidth
+            />
 
               <TextField
                 label="Tally bill no(s)"
@@ -188,7 +213,10 @@ export function DispatchPage() {
                   }}
                 >
                   <Typography fontWeight={700}>{e.dispatch_date}</Typography>
-                  <Typography>{Math.round(e.dispatch_weight)} kg</Typography>
+                  <Typography>
+                    {Math.round(e.dispatch_weight)} kg / {Math.round(e.dispatch_pcs || 0)} pcs
+                  </Typography>
+                  <Typography color="text.secondary">{e.bundle_no ?? "—"}</Typography>
                   <Typography color="text.secondary">{e.transport ?? "—"}</Typography>
                   <Typography color="text.secondary" sx={{ textAlign: "right" }}>
                     {e.tally_bill_nos && e.tally_bill_nos.length ? e.tally_bill_nos.join(", ") : "—"}

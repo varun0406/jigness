@@ -93,6 +93,7 @@ export function OrderEntryPage() {
         grade: l.grade.trim() || "-",
         length_nos: lengthNosFromParts(l.length, l.no_of_pieces),
         order_kgs: Number(l.order_kgs),
+        order_pcs: Math.max(0, Math.floor(Number(l.no_of_pieces) || 0)),
         bill_rate: Number(l.bill_rate) || 0,
       }))
       .filter((l) => l.item && l.order_kgs > 0);
@@ -259,6 +260,7 @@ export function OrderEntryPage() {
                     />
                     <TextField
                       label="No. of pieces"
+                      type="number"
                       value={line.no_of_pieces}
                       onChange={(e) => updateLine(index, { no_of_pieces: e.target.value })}
                       fullWidth

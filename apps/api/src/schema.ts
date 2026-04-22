@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS dispatch_entries (
   order_line_item_id INTEGER REFERENCES order_line_items(id) ON DELETE CASCADE,
   dispatch_date TEXT NOT NULL,
   dispatch_weight REAL NOT NULL CHECK(dispatch_weight > 0),
+  dispatch_pcs INTEGER DEFAULT 0 CHECK(dispatch_pcs >= 0),
+  bundle_no TEXT,
   transport TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -114,6 +116,7 @@ CREATE TABLE IF NOT EXISTS order_line_items (
   grade TEXT NOT NULL,
   length_nos TEXT,
   order_kgs REAL NOT NULL CHECK(order_kgs >= 0),
+  order_pcs INTEGER DEFAULT 0 CHECK(order_pcs >= 0),
   bill_rate REAL DEFAULT 0 CHECK(bill_rate >= 0),
   avg_cost REAL DEFAULT 0 CHECK(avg_cost >= 0),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -170,6 +173,9 @@ CREATE TABLE IF NOT EXISTS purchase_returns (
 }
 
 function migrateOrderLines(db: Db) {
+  if (!columnExists(db, "order_line_items", "order_pcs")) {
+    db.exec(`ALTER TABLE order_line_items ADD COLUMN order_pcs INTEGER DEFAULT 0 CHECK(order_pcs >= 0);`);
+  }
   const lineCount = (db.prepare(`SELECT COUNT(1) AS c FROM order_line_items`).get() as { c: number }).c;
   const orderCount = (db.prepare(`SELECT COUNT(1) AS c FROM orders`).get() as { c: number }).c;
   if (lineCount === 0 && orderCount > 0) {
@@ -201,11 +207,17 @@ SELECT
   oli.grade,
   oli.length_nos,
   oli.order_kgs,
+  oli.order_pcs,
   COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0) AS dispatch_weight,
+  COALESCE((SELECT SUM(de.dispatch_pcs) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0) AS dispatch_pcs,
   (
     oli.order_kgs
     - COALESCE((SELECT SUM(de.dispatch_weight) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0)
   ) AS balance_kgs,
+  (
+    oli.order_pcs
+    - COALESCE((SELECT SUM(de.dispatch_pcs) FROM dispatch_entries de WHERE de.order_line_item_id = oli.id), 0)
+  ) AS balance_pcs,
   oli.avg_cost,
   oli.bill_rate,
   (oli.bill_rate - oli.avg_cost) AS profit_per_kg,
@@ -280,6 +292,12 @@ function migrateDispatchSchema(db: Db) {
       )
       WHERE order_line_item_id IS NULL;
     `);
+  }
+  if (!columnExists(db, "dispatch_entries", "dispatch_pcs")) {
+    db.exec(`ALTER TABLE dispatch_entries ADD COLUMN dispatch_pcs INTEGER DEFAULT 0 CHECK(dispatch_pcs >= 0);`);
+  }
+  if (!columnExists(db, "dispatch_entries", "bundle_no")) {
+    db.exec(`ALTER TABLE dispatch_entries ADD COLUMN bundle_no TEXT;`);
   }
 
   db.exec(`

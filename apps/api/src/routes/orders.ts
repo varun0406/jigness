@@ -29,6 +29,7 @@ const PatchLineBody = z.object({
   grade: z.string().trim().min(1).optional(),
   length_nos: z.string().trim().optional().nullable(),
   order_kgs: z.coerce.number().min(0).optional(),
+  order_pcs: z.coerce.number().int().min(0).optional(),
   bill_rate: z.number().min(0).optional(),
   avg_cost: z.number().min(0).optional(),
 });
@@ -39,6 +40,7 @@ const OrderLine = z.object({
   grade: z.string().trim().min(1),
   length_nos: z.string().trim().optional(),
   order_kgs: z.coerce.number().min(0),
+  order_pcs: z.coerce.number().int().min(0).default(0),
   bill_rate: z.coerce.number().min(0).default(0),
   // avg_cost is derived automatically from purchases; can still be edited later per-line.
   avg_cost: z.coerce.number().min(0).optional(),
@@ -175,8 +177,8 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
 
       const orderId = Number(orderInfo.lastInsertRowid);
       const insLine = db.prepare(
-        `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, bill_rate, avg_cost)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, order_pcs, bill_rate, avg_cost)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       );
       for (const l of lines) {
         const autoAvg = avgCostFromPurchases(db, l.productId);
@@ -187,6 +189,7 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
           l.grade,
           l.length_nos ?? null,
           l.order_kgs,
+          l.order_pcs ?? 0,
           l.bill_rate,
           l.avg_cost ?? autoAvg,
         );
@@ -294,8 +297,8 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
     const autoAvg = avgCostFromPurchases(db, productId);
     const info = db
       .prepare(
-        `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, bill_rate, avg_cost)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO order_line_items(order_id, size, item, grade, length_nos, order_kgs, order_pcs, bill_rate, avg_cost)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         orderId,
@@ -304,6 +307,7 @@ export async function registerOrdersRoutes(app: FastifyInstance, opts: { db: Db 
         body.grade,
         body.length_nos ?? null,
         body.order_kgs,
+        body.order_pcs ?? 0,
         body.bill_rate ?? 0,
         body.avg_cost ?? autoAvg,
       );

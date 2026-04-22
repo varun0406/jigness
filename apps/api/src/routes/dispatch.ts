@@ -7,6 +7,8 @@ const OVER_DISPATCH_ALLOWANCE_KGS = 300;
 const CreateDispatchBody = z.object({
   dispatch_date: z.string().min(10),
   dispatch_weight: z.coerce.number().positive(),
+  dispatch_pcs: z.coerce.number().int().min(0).optional(),
+  bundle_no: z.string().trim().optional(),
   transport: z.string().trim().optional(),
   tally_bill_nos: z.array(z.string().trim().min(1)).optional(),
 });
@@ -14,6 +16,8 @@ const CreateDispatchBody = z.object({
 const PatchDispatchBody = z.object({
   dispatch_date: z.string().min(10).optional(),
   dispatch_weight: z.coerce.number().positive().optional(),
+  dispatch_pcs: z.coerce.number().int().min(0).optional(),
+  bundle_no: z.string().trim().optional().nullable(),
   transport: z.string().trim().optional().nullable(),
 });
 
@@ -89,7 +93,7 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
 
     const rows = db
       .prepare(
-        `SELECT id, dispatch_date, dispatch_weight, transport, created_at
+        `SELECT id, dispatch_date, dispatch_weight, dispatch_pcs, bundle_no, transport, created_at
          FROM dispatch_entries WHERE order_id = ? ORDER BY dispatch_date DESC, id DESC`,
       )
       .all(orderId);
@@ -129,9 +133,18 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
     // For WO-level dispatch, order_line_item_id is not set.
     const info = db
       .prepare(
-        `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?,?)`,
+        `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, dispatch_pcs, bundle_no, transport)
+         VALUES (?,?,?,?,?,?,?)`,
       )
-      .run(orderId, null, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
+      .run(
+        orderId,
+        null,
+        body.dispatch_date,
+        body.dispatch_weight,
+        body.dispatch_pcs ?? 0,
+        body.bundle_no?.trim() || null,
+        body.transport ?? null,
+      );
 
     const dispatchId = Number(info.lastInsertRowid);
     const bills = (body.tally_bill_nos ?? []).map((s) => s.trim()).filter(Boolean);
@@ -149,7 +162,7 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
     if (!Number.isFinite(lineId)) return reply.code(400).send({ error: "Invalid line id" });
     const rows = db
       .prepare(
-        `SELECT id, dispatch_date, dispatch_weight, transport, created_at
+        `SELECT id, dispatch_date, dispatch_weight, dispatch_pcs, bundle_no, transport, created_at
          FROM dispatch_entries WHERE order_line_item_id = ? ORDER BY dispatch_date DESC, id DESC`,
       )
       .all(lineId);
@@ -187,9 +200,20 @@ export async function registerDispatchRoutes(app: FastifyInstance, opts: { db: D
       return reply.code(400).send({ error: e instanceof Error ? e.message : "Invalid dispatch" });
     }
 
-    const info = db.prepare(
-      `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, transport) VALUES (?,?,?,?,?)`,
-    ).run(lineExists.order_id, lineId, body.dispatch_date, body.dispatch_weight, body.transport ?? null);
+    const info = db
+      .prepare(
+        `INSERT INTO dispatch_entries(order_id, order_line_item_id, dispatch_date, dispatch_weight, dispatch_pcs, bundle_no, transport)
+         VALUES (?,?,?,?,?,?,?)`,
+      )
+      .run(
+        lineExists.order_id,
+        lineId,
+        body.dispatch_date,
+        body.dispatch_weight,
+        body.dispatch_pcs ?? 0,
+        body.bundle_no?.trim() || null,
+        body.transport ?? null,
+      );
 
     const dispatchId = Number(info.lastInsertRowid);
     const bills = (body.tally_bill_nos ?? []).map((s) => s.trim()).filter(Boolean);
