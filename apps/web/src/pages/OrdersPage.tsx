@@ -6,9 +6,11 @@ import {
   Chip,
   CircularProgress,
   Drawer,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   Stack,
+  Switch,
   TextField,
   Typography,
   Alert,
@@ -81,6 +83,7 @@ export function OrdersPage() {
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [products, setProducts] = useState<MasterProduct[]>([]);
   const [q, setQ] = useState("");
+  const [hideCompleted, setHideCompleted] = useState(true);
   const [selected, setSelected] = useState<OrderRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [dispatchEntries, setDispatchEntries] = useState<DispatchEntry[]>([]);
@@ -173,6 +176,11 @@ export function OrdersPage() {
       profitPerKgWeighted,
     };
   }, [rows]);
+
+  const shownRows = useMemo(() => {
+    if (!hideCompleted) return rows;
+    return rows.filter((r) => r.balance_kgs > 0.0001 || (r.balance_pcs || 0) > 0);
+  }, [rows, hideCompleted]);
 
   async function saveHeaderPatch(orderId: number, body: Parameters<typeof patchOrder>[1]) {
     setSaving(true);
@@ -306,6 +314,11 @@ export function OrdersPage() {
             ),
           }}
         />
+        <FormControlLabel
+          sx={{ whiteSpace: "nowrap", ml: 1 }}
+          control={<Switch checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />}
+          label="Hide completed"
+        />
       </Stack>
 
       <Box
@@ -356,7 +369,7 @@ export function OrdersPage() {
           <CircularProgress />
         </Box>
       ) : (
-        <Box
+      <Box
           sx={{
             borderRadius: 3,
             overflowX: "auto",
@@ -403,7 +416,7 @@ export function OrdersPage() {
             ))}
           </Box>
 
-          {rows.map((r) => {
+          {shownRows.map((r) => {
             const loss = r.profit_per_kg < 0;
             const pending = r.balance_kgs > 0.0001 || (r.balance_pcs || 0) > 0;
             return (
@@ -470,15 +483,15 @@ export function OrdersPage() {
             <Cell>{" "}</Cell>
             <Cell>{" "}</Cell>
             <Cell>{" "}</Cell>
-            <Cell strong>{kg(header.orderKgs)}</Cell>
-            <Cell strong>{pcs(header.orderPcs)}</Cell>
-            <Cell strong>{kg(header.dispatchKgs)}</Cell>
-            <Cell strong>{pcs(header.dispatchPcsSum)}</Cell>
-            <Cell strong highlight={header.balanceKgs > 0.0001 ? "warning" : undefined}>
-              {kg(header.balanceKgs)}
+            <Cell strong>{kg(sum(shownRows.map((r) => r.order_kgs)))}</Cell>
+            <Cell strong>{pcs(sum(shownRows.map((r) => r.order_pcs || 0)))}</Cell>
+            <Cell strong>{kg(sum(shownRows.map((r) => r.dispatch_weight)))}</Cell>
+            <Cell strong>{pcs(sum(shownRows.map((r) => r.dispatch_pcs || 0)))}</Cell>
+            <Cell strong highlight={sum(shownRows.map((r) => Math.max(0, r.balance_kgs))) > 0.0001 ? "warning" : undefined}>
+              {kg(sum(shownRows.map((r) => Math.max(0, r.balance_kgs))))}
             </Cell>
-            <Cell strong highlight={header.balancePcs > 0.0001 ? "warning" : undefined}>
-              {pcs(header.balancePcs)}
+            <Cell strong highlight={sum(shownRows.map((r) => Math.max(0, r.balance_pcs || 0))) > 0 ? "warning" : undefined}>
+              {pcs(sum(shownRows.map((r) => Math.max(0, r.balance_pcs || 0))))}
             </Cell>
             <Cell>{" "}</Cell>
             <Cell>{" "}</Cell>

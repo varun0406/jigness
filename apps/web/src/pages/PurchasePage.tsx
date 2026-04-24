@@ -8,8 +8,10 @@ import {
   CardContent,
   CircularProgress,
   Drawer,
+  FormControlLabel,
   IconButton,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -44,6 +46,7 @@ export function PurchasePage() {
   const [products, setProducts] = useState<MasterProduct[]>([]);
 
   const [rows, setRows] = useState<PurchaseLedgerRow[]>([]);
+  const [hideCompleted, setHideCompleted] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -88,6 +91,11 @@ export function PurchasePage() {
     if (r.item && r.size && r.grade) return `${r.item} • ${r.size} • ${r.grade}`;
     return "—";
   }
+
+  const shownRows = useMemo(() => {
+    if (!hideCompleted) return rows;
+    return rows.filter((r) => r.balance_weight > 0.01);
+  }, [rows, hideCompleted]);
 
   const loadLedger = useCallback(() => {
     setLoading(true);
@@ -447,7 +455,7 @@ export function PurchasePage() {
           <CardContent>
             <Stack spacing={2}>
               <Autocomplete
-                options={rows}
+                options={shownRows}
                 value={poForReceipt}
                 onChange={(_, v) => setPoForReceipt(v)}
                 getOptionLabel={(r) =>
@@ -501,15 +509,20 @@ export function PurchasePage() {
 
       <Card>
         <CardContent>
-          <Typography fontWeight={800} sx={{ mb: 1 }}>
-            Purchase orders ledger
-          </Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+            <Typography fontWeight={800}>Purchase orders ledger</Typography>
+            <FormControlLabel
+              sx={{ whiteSpace: "nowrap", ml: 1 }}
+              control={<Switch checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />}
+              label="Hide completed"
+            />
+          </Stack>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
             Click a row to see receipt lines. Columns match PO / WEIGHT / rec wt. / bal / RATE / amounts / supplier.
           </Typography>
           {loading ? (
             <CircularProgress size={22} />
-          ) : rows.length === 0 ? (
+          ) : shownRows.length === 0 ? (
             <Typography color="text.secondary">No purchase orders yet.</Typography>
           ) : (
             <Box sx={{ overflowX: "auto" }}>
@@ -542,7 +555,7 @@ export function PurchasePage() {
                 <span>REC NOTE</span>
                 <span />
               </Box>
-              {rows.map((r) => (
+              {shownRows.map((r) => (
                 <Box
                   key={r.id}
                   onClick={() => setDrawerPo(r)}
