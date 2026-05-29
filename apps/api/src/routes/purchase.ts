@@ -239,13 +239,11 @@ LIMIT 500
       | undefined;
     if (!po) return reply.code(404).send({ error: "Purchase order not found" });
 
-    const currentSum = db
-      .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ?`)
-      .get(id) as { s: number };
-    const cap = maxReceivableForPo(po.weight);
-    if (currentSum.s + body.weight_received > cap + 0.0001) {
+    const balanceWeight = po.weight - po.received_weight;
+    const cap = balanceWeight + RECEIPT_VARIANCE_ALLOWANCE_KGS;
+    if (body.weight_received > cap + 0.0001) {
       return reply.code(400).send({
-        error: `Received total cannot exceed PO weight + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
+        error: `Received weight cannot exceed PO balance weight + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
       });
     }
 
@@ -330,28 +328,35 @@ LIMIT 500
       .get(receiptId) as { id: number; purchase_entry_id: number; weight_received: number } | undefined;
     if (!existing) return reply.code(404).send({ error: "Receipt not found" });
 
-    const po = db.prepare(`SELECT id, weight FROM purchase_entries WHERE id = ?`).get(existing.purchase_entry_id) as
-      | { id: number; weight: number }
+    const po = db.prepare(`SELECT id, weight, received_weight FROM purchase_entries WHERE id = ?`).get(existing.purchase_entry_id) as
+      | { id: number; weight: number; received_weight: number }
       | undefined;
     if (!po) return reply.code(404).send({ error: "Purchase order not found" });
 
     const nextWeight = body.weight_received ?? existing.weight_received;
-    const sumOther = db
-      .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ? AND id <> ?`)
-      .get(existing.purchase_entry_id, receiptId) as { s: number };
-    const cap = maxReceivableForPo(po.weight);
-    if (sumOther.s + nextWeight > cap + 0.0001) {
+    const receipts = db
+      .prepare(`SELECT COALESCE(SUM(weight_received),0) AS s FROM purchase_receipts WHERE purchase_entry_id = ?`)
+      .get(existing.purchase_entry_id) as { s: number };
+    const returns = db
+      .prepare(`SELECT COALESCE(SUM(weight),0) AS s FROM purchase_returns WHERE purchase_entry_id = ?`)
+      .get(existing.purchase_entry_id) as { s: number };
+
+    const receiptsExcludingThis = receipts.s - existing.weight_received;
+    const netReceivedExcludingThis = Math.max(0, receiptsExcludingThis - returns.s);
+    const balanceWeightExcludingThis = po.weight - netReceivedExcludingThis;
+    const cap = balanceWeightExcludingThis + RECEIPT_VARIANCE_ALLOWANCE_KGS;
+
+    if (nextWeight > cap + 0.0001) {
       return reply.code(400).send({
-        error: `Received total cannot exceed PO weight + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
+        error: `Received weight cannot exceed PO balance weight (excluding this receipt) + ${RECEIPT_VARIANCE_ALLOWANCE_KGS} kg (${cap} kg max)`,
       });
     }
 
-    const returnsTotal = db
-      .prepare(`SELECT COALESCE(SUM(weight),0) AS s FROM purchase_returns WHERE purchase_entry_id = ?`)
-      .get(existing.purchase_entry_id) as { s: number };
-    if (sumOther.s + nextWeight < returnsTotal.s - 0.0001) {
+    const sumOther = receiptsExcludingThis;
+    const returnsTotal = returns.s;
+    if (sumOther + nextWeight < returnsTotal - 0.0001) {
       return reply.code(400).send({
-        error: `Total received weight cannot fall below total returned weight (${returnsTotal.s} kg)`,
+        error: `Total received weight cannot fall below total returned weight (${returnsTotal} kg)`,
       });
     }
 

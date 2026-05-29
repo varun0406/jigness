@@ -466,8 +466,8 @@ export function PurchasePage() {
               {poForReceipt ? (
                 <Typography variant="body2" color="text.secondary">
                   Ordered {money(poForReceipt.weight)} kg • Received {money(poForReceipt.received_weight)} kg • Balance{" "}
-                  <b>{money(poForReceipt.balance_weight)}</b> kg • Max receivable total{" "}
-                  <b>{money(poForReceipt.weight + 300)}</b> kg (PO + 300 kg variance)
+                  <b>{money(poForReceipt.balance_weight)}</b> kg • Max weight for next receipt{" "}
+                  <b>{money(poForReceipt.balance_weight + 300)}</b> kg (balance + 300 kg variance)
                 </Typography>
               ) : null}
               <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
