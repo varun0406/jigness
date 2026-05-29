@@ -63,10 +63,9 @@ FROM order_line_items oli
     const currentStock = openingStock + incomingMaterial + dispatchReturn - dispatchTotal - incomingRmReturn;
 
     // Per requested formula:
-    // PurchaseRequired = (Opening + IncomingMaterial - MinimumStock) + PendingPurchaseOrders - DispatchTotal - PendingSalesOrders
-    // Note: returns are already included in CurrentStock, but the requested formula didn't mention them explicitly.
+    // PurchaseRequired = (Opening + IncomingMaterial - IncomingRmReturn - MinimumStock) + PendingPurchaseOrders - DispatchTotal - PendingSalesOrders
     const purchaseRequired =
-      (openingStock + incomingMaterial - minimumStock) + pendingPurchaseOrders - dispatchTotal - pendingSalesOrders;
+      (openingStock + incomingMaterial - incomingRmReturn - minimumStock) + pendingPurchaseOrders - dispatchTotal - pendingSalesOrders;
 
     return {
       data: {
