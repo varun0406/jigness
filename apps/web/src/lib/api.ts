@@ -228,6 +228,10 @@ export async function patchMinimumStock(minimum_stock_kgs: number) {
 
 export type DispatchEntry = {
   id: number;
+  order_line_item_id?: number | null;
+  item?: string;
+  size?: string;
+  grade?: string;
   dispatch_date: string;
   dispatch_weight: number;
   dispatch_pcs: number;

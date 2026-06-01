@@ -15,7 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import dayjs from "dayjs";
-import { createDispatchForLine, fetchDispatch, fetchDispatchForLine, fetchOrders } from "../lib/api";
+import { createDispatchForLine, fetchDispatch, fetchOrders } from "../lib/api";
 import type { DispatchEntry, OrderRow } from "../lib/api";
 
 export function DispatchPage() {
