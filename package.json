@@ -19,6 +19,7 @@
     "packages/*"
   ],
   "dependencies": {
+    "docx": "^9.7.1",
     "sonic-boom": "^5.0.0"
   }
 }
