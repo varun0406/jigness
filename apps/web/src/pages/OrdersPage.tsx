@@ -33,6 +33,7 @@ import {
   patchOrderLine,
   deleteOrder,
 } from "../lib/api";
+import type { MasterProduct, OrderRow } from "../lib/api";
 import type { DispatchEntry, PaymentEntry } from "../lib/api";
 import { exportToCsv } from "../lib/export";
 
